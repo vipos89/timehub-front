@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -9,12 +9,13 @@ import { Calendar as CalendarIcon, Clock, User, Scissors, CheckCircle2, ChevronR
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
-import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
 
-const STEPS = ['Услуга', 'Мастер', 'Дата и время', 'Подтверждение'];
+const STEPS = ['Услуга', 'Мастер', 'Дата и время', 'Оформление'];
 
 export default function BookingPage() {
     const { companyId } = useParams();
@@ -25,6 +26,10 @@ export default function BookingPage() {
     const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
     const [selectedSlot, setSelectedSlot] = useState<any>(null);
+
+    // Guest state
+    const [guestName, setGuestName] = useState('');
+    const [guestPhone, setGuestPhone] = useState('');
 
     // Queries
     const { data: company } = useQuery({
@@ -67,15 +72,38 @@ export default function BookingPage() {
         },
     });
 
-    const handleBooking = () => {
-        bookingMutation.mutate({
-            company_id: Number(companyId),
-            service_id: selectedService.id,
-            employee_id: selectedEmployee.id,
-            start_time: selectedSlot.start_time,
-            end_time: selectedSlot.end_time,
-            client_id: 1, // Mock client ID for now
-        });
+    const createCustomerMutation = useMutation({
+        mutationFn: (data: any) => api.post('/customers', data),
+    });
+
+    const handleBooking = async () => {
+        if (!guestName || !guestPhone) {
+            toast.error('Пожалуйста, заполните имя и телефон');
+            return;
+        }
+
+        try {
+            // 1. Create or Get Customer
+            const customerRes = await createCustomerMutation.mutateAsync({
+                first_name: guestName,
+                phone: guestPhone,
+                branch_id: Number(selectedService.branch_id), // Assuming service has branch_id
+                email: '', // Optional for now
+            });
+
+            // 2. Create Booking
+            bookingMutation.mutate({
+                company_id: Number(companyId),
+                service_id: selectedService.id,
+                employee_id: selectedEmployee.id,
+                start_time: selectedSlot.start_time,
+                end_time: selectedSlot.end_time,
+                client_id: customerRes.data.id,
+                comment: 'Online booking',
+            });
+        } catch (err: any) {
+            toast.error('Ошибка при создании клиента: ' + (err.response?.data?.error || err.message));
+        }
     };
 
     if (step === 4) {
@@ -89,7 +117,7 @@ export default function BookingPage() {
                         {format(new Date(selectedSlot.start_time), 'd MMMM, HH:mm', { locale: ru })}
                     </CardDescription>
                     <Button className="mt-8 bg-neutral-900 text-white w-full h-12" onClick={() => window.location.reload()}>
-                        Вернуться назад
+                        Записаться еще
                     </Button>
                 </Card>
             </div>
@@ -237,34 +265,57 @@ export default function BookingPage() {
                         {step === 3 && (
                             <div className="space-y-6">
                                 <div className="p-6 rounded-2xl bg-neutral-50 border border-neutral-100 space-y-4">
+                                    <h3 className="font-bold text-lg text-neutral-900">Ваш заказ</h3>
                                     <div className="flex items-start gap-4">
                                         <Scissors className="h-5 w-5 text-neutral-400 mt-1" />
                                         <div>
                                             <p className="text-xs text-neutral-500 uppercase font-bold tracking-widest">Услуга</p>
-                                            <p className="font-bold text-neutral-900 text-lg">{selectedService.name}</p>
+                                            <p className="font-bold text-neutral-900">{selectedService.name}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
                                         <User className="h-5 w-5 text-neutral-400 mt-1" />
                                         <div>
                                             <p className="text-xs text-neutral-500 uppercase font-bold tracking-widest">Мастер</p>
-                                            <p className="font-bold text-neutral-900 text-lg">{selectedEmployee.name}</p>
+                                            <p className="font-bold text-neutral-900">{selectedEmployee.name}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-4">
                                         <CalendarIcon className="h-5 w-5 text-neutral-400 mt-1" />
                                         <div>
                                             <p className="text-xs text-neutral-500 uppercase font-bold tracking-widest">Дата и время</p>
-                                            <p className="font-bold text-neutral-900 text-lg">
+                                            <p className="font-bold text-neutral-900">
                                                 {format(new Date(selectedSlot.start_time), 'd MMMM, HH:mm', { locale: ru })}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <Button className="w-full h-14 bg-neutral-900 text-white hover:bg-neutral-800 text-lg font-bold shadow-lg" onClick={handleBooking} disabled={bookingMutation.isPending}>
-                                        {bookingMutation.isPending ? 'Оформление...' : 'Подтвердить запись'}
+                                <div className="space-y-4">
+                                    <h3 className="font-bold text-lg text-neutral-900">Ваши данные</h3>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="name">Имя</Label>
+                                        <Input
+                                            id="name"
+                                            placeholder="Как к вам обращаться"
+                                            value={guestName}
+                                            onChange={(e) => setGuestName(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="phone">Телефон</Label>
+                                        <Input
+                                            id="phone"
+                                            placeholder="+7 (999) 000-00-00"
+                                            value={guestPhone}
+                                            onChange={(e) => setGuestPhone(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-4">
+                                    <Button className="w-full h-14 bg-neutral-900 text-white hover:bg-neutral-800 text-lg font-bold shadow-lg" onClick={handleBooking} disabled={bookingMutation.isPending || createCustomerMutation.isPending}>
+                                        {(bookingMutation.isPending || createCustomerMutation.isPending) ? 'Оформление...' : 'Подтвердить запись'}
                                     </Button>
                                     <p className="text-[10px] text-center text-neutral-400 uppercase tracking-widest font-semibold">
                                         Нажимая кнопку, вы соглашаетесь с правилами сервиса

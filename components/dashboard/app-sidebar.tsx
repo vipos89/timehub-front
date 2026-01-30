@@ -59,7 +59,7 @@ const navItems = [
     },
     {
         title: 'Записи',
-        url: '/dashboard/bookings',
+        url: '/dashboard/appointments',
         icon: BookOpen,
     },
 ];
