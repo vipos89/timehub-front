@@ -195,7 +195,7 @@ export default function SchedulePage() {
                                     <td className="sticky left-0 z-10 bg-white border-r border-b border-neutral-100 p-4">
                                         <div className="flex items-center gap-3">
                                             <Avatar className="h-8 w-8">
-                                                <AvatarImage src={emp.avatar_url} />
+                                                <AvatarImage src={emp.avatar_thumbnail_url || emp.avatar_url} />
                                                 <AvatarFallback className="text-[10px] bg-neutral-100 font-bold">{emp.name[0]}</AvatarFallback>
                                             </Avatar>
                                             <div className="flex flex-col">

@@ -118,6 +118,9 @@ export default function AppointmentsPage() {
     const visibleEmployees = useMemo(() => {
         if (!employees || !shifts) return [];
         return employees.filter((emp: any) => {
+            // Only show employees visible in booking
+            if (emp.visible_in_booking === false) return false;
+
             const shift = shifts.find((s: any) =>
                 s.employee_id === emp.id &&
                 DateTime.fromISO(s.date).hasSame(currentDate, 'day')
@@ -317,7 +320,7 @@ export default function AppointmentsPage() {
                     {visibleEmployees.map((emp: any) => (
                         <div key={emp.id} className="flex-1 min-w-[150px] p-3 border-r border-neutral-200 flex items-center gap-3 justify-center">
                             <Avatar className="h-8 w-8 border border-white shadow-sm">
-                                <AvatarImage src={emp.avatar_url} />
+                                <AvatarImage src={emp.avatar_thumbnail_url || emp.avatar_url} />
                                 <AvatarFallback className="text-[10px] bg-neutral-200">{emp.name[0]}</AvatarFallback>
                             </Avatar>
                             <div className="flex flex-col">
