@@ -158,7 +158,7 @@ export default function ServicesPage() {
     }
 
     return (
-        <div className="flex h-[calc(100vh-8rem)] -m-8 bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in duration-500">
+        <div className="flex h-[calc(100vh-8rem)] bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in duration-500">
             {/* Sidebar List */}
             <div className="w-80 border-r border-neutral-200 flex flex-col bg-neutral-50/30">
                 <div className="p-4 space-y-4 border-b border-neutral-200 bg-white">
@@ -261,7 +261,7 @@ export default function ServicesPage() {
             {/* Main Content Detail Area */}
             <div className="flex-1 overflow-y-auto bg-neutral-50/10">
                 {selectedService ? (
-                    <div className="p-8 max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                    <div className="p-8 max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                         {/* Header Section */}
                         <div className="flex items-start justify-between">
                             <div className="space-y-1">
