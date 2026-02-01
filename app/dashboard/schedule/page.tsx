@@ -35,7 +35,7 @@ export default function SchedulePage() {
     const { selectedBranchID, branches } = useBranch();
     const [currentMonth, setCurrentMonth] = useState(DateTime.now().startOf('month'));
     const [editingShift, setEditingShift] = useState<{ empID: number; date: string } | null>(null);
-    const [newShift, setNewShift] = useState({ start: '09:00', end: '21:00', isDayOff: false });
+    const [newShift, setNewShift] = useState({ start: '09:00', end: '21:00', shiftType: 'work' });
 
     // Queries
     const { data: company } = useQuery({
@@ -101,9 +101,9 @@ export default function SchedulePage() {
         const existing = getShiftForMaster(empID, day);
         setEditingShift({ empID, date: day.toISODate()! });
         if (existing) {
-            setNewShift({ start: existing.start_time, end: existing.end_time, isDayOff: existing.is_day_off });
+            setNewShift({ start: existing.start_time, end: existing.end_time, shiftType: existing.shift_type || 'work' });
         } else {
-            setNewShift({ start: '09:00', end: '21:00', isDayOff: false });
+            setNewShift({ start: '09:00', end: '21:00', shiftType: 'work' });
         }
     };
 
@@ -115,7 +115,7 @@ export default function SchedulePage() {
             date: editingShift.date + 'T00:00:00Z',
             start_time: newShift.start,
             end_time: newShift.end,
-            is_day_off: newShift.isDayOff,
+            shift_type: newShift.shiftType,
         });
     };
 
@@ -206,7 +206,7 @@ export default function SchedulePage() {
                                     </td>
                                     <td className="border-b border-neutral-100 p-4 text-center">
                                         {(() => {
-                                            const empShifts = shifts?.filter((s: any) => s.employee_id === emp.id && !s.is_day_off) || [];
+                                            const empShifts = shifts?.filter((s: any) => s.employee_id === emp.id && s.shift_type === 'work') || [];
                                             const totalHours = empShifts.reduce((acc: number, s: any) => {
                                                 const start = DateTime.fromFormat(s.start_time, 'HH:mm');
                                                 const end = DateTime.fromFormat(s.end_time, 'HH:mm');
@@ -228,18 +228,29 @@ export default function SchedulePage() {
                                                 onClick={() => handleCellClick(emp.id, day)}
                                                 className={`border-b border-r border-neutral-50 p-1 text-center group cursor-pointer hover:bg-neutral-100/50 transition-colors ${day.weekday > 5 ? 'bg-orange-50/10' : ''}`}
                                             >
-                                                {shift ? (
-                                                    shift.is_day_off ? (
-                                                        <div className="bg-neutral-100 border border-neutral-200 rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 opacity-60">
-                                                            <span className="text-[10px] font-bold text-neutral-400 leading-tight uppercase">Вых</span>
+                                                {shift ? (() => {
+                                                    const shiftType = shift.shift_type || (shift.is_day_off ? 'day_off' : 'work');
+                                                    const typeConfig = {
+                                                        work: { bg: 'bg-green-100/80', border: 'border-green-200', text: 'text-green-700', label: '' },
+                                                        day_off: { bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'text-neutral-400', label: 'Вых' },
+                                                        sick_leave: { bg: 'bg-yellow-100/80', border: 'border-yellow-200', text: 'text-yellow-700', label: 'Б/Л' },
+                                                        vacation: { bg: 'bg-blue-100/80', border: 'border-blue-200', text: 'text-blue-700', label: 'Отп' },
+                                                        unpaid_leave: { bg: 'bg-purple-100/80', border: 'border-purple-200', text: 'text-purple-700', label: 'За свой счет' },
+                                                        absence: { bg: 'bg-red-100/80', border: 'border-red-200', text: 'text-red-700', label: 'Прогул' },
+                                                    };
+                                                    const config = typeConfig[shiftType as keyof typeof typeConfig] || typeConfig.work;
+                                                    
+                                                    return shiftType === 'work' ? (
+                                                        <div className={`${config.bg} border ${config.border} rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm`}>
+                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.start_time}</span>
+                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.end_time}</span>
                                                         </div>
                                                     ) : (
-                                                        <div className="bg-green-100/80 border border-green-200 rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm">
-                                                            <span className="text-[10px] font-bold text-green-700 leading-tight">{shift.start_time}</span>
-                                                            <span className="text-[10px] font-bold text-green-700 leading-tight">{shift.end_time}</span>
+                                                        <div className={`${config.bg} border ${config.border} rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 ${shiftType === 'day_off' ? 'opacity-60' : ''}`}>
+                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight uppercase`}>{config.label}</span>
                                                         </div>
-                                                    )
-                                                ) : (
+                                                    );
+                                                })() : (
                                                     <div className="h-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <div className="h-6 w-6 rounded-full bg-neutral-900 text-white flex items-center justify-center shadow-lg">
                                                             <span className="text-lg font-light leading-none">+</span>
@@ -266,17 +277,23 @@ export default function SchedulePage() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="flex items-center gap-4">
-                            <Label className="w-20">Выходной</Label>
-                            <Button
-                                variant={newShift.isDayOff ? "default" : "outline"}
-                                onClick={() => setNewShift({ ...newShift, isDayOff: !newShift.isDayOff })}
-                                className={newShift.isDayOff ? "bg-red-500 hover:bg-red-600" : ""}
-                            >
-                                {newShift.isDayOff ? "Да" : "Нет"}
-                            </Button>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Тип дня</Label>
+                            <Select value={newShift.shiftType} onValueChange={(val) => setNewShift({ ...newShift, shiftType: val })}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Выберите тип" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="work">Рабочий день</SelectItem>
+                                    <SelectItem value="day_off">Выходной</SelectItem>
+                                    <SelectItem value="sick_leave">Больничный</SelectItem>
+                                    <SelectItem value="vacation">Отпуск</SelectItem>
+                                    <SelectItem value="unpaid_leave">Выходной за свой счет</SelectItem>
+                                    <SelectItem value="absence">Прогул</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-                        {!newShift.isDayOff && (
+                        {newShift.shiftType === 'work' && (
                             <>
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="start" className="text-right">Начало</Label>

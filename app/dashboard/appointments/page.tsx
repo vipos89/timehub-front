@@ -27,13 +27,17 @@ export default function AppointmentsPage() {
 
     // Modal State
     const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<{ empID: number; time: DateTime } | null>(null);
+    const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
     const [formData, setFormData] = useState({
         serviceId: '',
         startTime: '',
         endTime: '',
         clientName: '',
         clientPhone: '',
+        comment: '',
+        status: 'pending',
     });
 
     // Fetch data...
@@ -118,7 +122,7 @@ export default function AppointmentsPage() {
                 s.employee_id === emp.id &&
                 DateTime.fromISO(s.date).hasSame(currentDate, 'day')
             );
-            return shift && !shift.is_day_off;
+            return shift && (shift.shift_type === 'work' || (!shift.shift_type && !shift.is_day_off));
         });
     }, [employees, shifts, currentDate]);
 
@@ -148,16 +152,22 @@ export default function AppointmentsPage() {
             queryClient.invalidateQueries({ queryKey: ['appointments'] });
             toast.success('Запись создана');
             setIsBookingModalOpen(false);
-            setFormData({
-                serviceId: '',
-                startTime: '',
-                endTime: '',
-                clientName: '',
-                clientPhone: '',
-            });
+            setFormData({ serviceId: '', startTime: '', endTime: '', clientName: '', clientPhone: '', comment: '', status: 'pending' });
         },
         onError: (error: any) => {
             toast.error('Ошибка создания записи: ' + (error.response?.data?.error || error.message));
+        }
+    });
+
+    const updateStatusMutation = useMutation({
+        mutationFn: ({ id, status }: { id: number, status: string }) => api.patch(`/appointments/${id}`, { status }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['appointments'] });
+            toast.success('Статус обновлен');
+            setIsEditModalOpen(false);
+        },
+        onError: (error: any) => {
+            toast.error('Ошибка обновления: ' + (error.response?.data?.error || error.message));
         }
     });
 
@@ -201,7 +211,7 @@ export default function AppointmentsPage() {
             DateTime.fromISO(s.date).hasSame(currentDate, 'day')
         );
 
-        if (!shift || shift.is_day_off) return false;
+        if (!shift || (shift.shift_type && shift.shift_type !== 'work') || (!shift.shift_type && shift.is_day_off)) return false;
 
         const shiftStart = DateTime.fromFormat(shift.start_time, 'HH:mm');
         const shiftEnd = DateTime.fromFormat(shift.end_time, 'HH:mm');
@@ -225,8 +235,8 @@ export default function AppointmentsPage() {
 
     // ИЗМЕНЕНО: Отправляем время как есть, без конвертации в UTC
     const handleCreateBooking = async () => {
-        if (!selectedSlot || !formData.serviceId || !formData.clientName || !formData.clientPhone) {
-            toast.error('Заполните все поля');
+        if (!selectedSlot || !formData.serviceId) {
+            toast.error('Заполните обязательные поля (Услуга)');
             return;
         }
 
@@ -249,7 +259,7 @@ export default function AppointmentsPage() {
                 client_id: clientRes.data.id,
                 start_time: startISO,
                 end_time: endISO,
-                comment: 'Admin booking'
+                comment: formData.comment
             });
 
         } catch (e) {
@@ -356,13 +366,25 @@ export default function AppointmentsPage() {
                                                 className="absolute left-1 right-1 rounded-md p-2 text-xs shadow-sm border overflow-hidden cursor-pointer hover:scale-[1.02] hover:z-10 transition-all"
                                                 style={{
                                                     ...getAppointmentStyle(app.start_time, app.end_time),
-                                                    backgroundColor: 'rgba(236, 253, 245, 0.9)',
-                                                    borderColor: 'rgba(52, 211, 153, 0.4)',
-                                                    color: '#065f46'
+                                                    backgroundColor: app.status === 'arrived' ? 'rgba(219, 234, 254, 0.9)' :
+                                                                     app.status === 'no_show' ? 'rgba(254, 226, 226, 0.9)' :
+                                                                     'rgba(236, 253, 245, 0.9)',
+                                                    borderColor: app.status === 'arrived' ? 'rgba(96, 165, 250, 0.4)' :
+                                                                 app.status === 'no_show' ? 'rgba(248, 113, 113, 0.4)' :
+                                                                 'rgba(52, 211, 153, 0.4)',
+                                                    color: app.status === 'arrived' ? '#1e40af' :
+                                                           app.status === 'no_show' ? '#991b1b' :
+                                                           '#065f46'
                                                 }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    alert(`Booking #${app.id}\nClient: ${customer ? customer.first_name + ' ' + customer.last_name : 'Unknown'}\nService: ${serviceName}`);
+                                                    setSelectedAppointment(app);
+                                                    setFormData({
+                                                        ...formData,
+                                                        status: app.status,
+                                                        comment: app.comment || ''
+                                                    });
+                                                    setIsEditModalOpen(true);
                                                 }}
                                             >
                                                 {/* ИЗМЕНЕНО: выводим время без конвертации timezone */}
@@ -371,7 +393,7 @@ export default function AppointmentsPage() {
                                                     <span className="font-normal opacity-70">- {formatTimeRaw(app.end_time)}</span>
                                                 </div>
                                                 <div className="font-semibold truncate mt-0.5">
-                                                    {customer ? `${customer.first_name} ${customer.last_name}` : `Client #${app.client_id}`}
+                                                    {app.client_phone !== 'ANONYMOUS' ? `${app.client_first_name} ${app.client_last_name}` : `Клиент`}
                                                 </div>
                                                 <div className="text-[10px] opacity-80 truncate">
                                                     {serviceName}
@@ -462,6 +484,16 @@ export default function AppointmentsPage() {
                                 className="col-span-3"
                             />
                         </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="comment" className="text-right">Комментарий</Label>
+                            <Input
+                                id="comment"
+                                value={formData.comment}
+                                onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
+                                placeholder="Комментарий к записи"
+                                className="col-span-3"
+                            />
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsBookingModalOpen(false)}>Отмена</Button>
@@ -470,6 +502,64 @@ export default function AppointmentsPage() {
                             disabled={createCustomerMutation.isPending || createBookingMutation.isPending || !formData.serviceId}
                         >
                             {(createCustomerMutation.isPending || createBookingMutation.isPending) ? 'Создание...' : 'Создать запись'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Booking Modal */}
+            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Редактирование записи</DialogTitle>
+                        <DialogDescription>
+                            Изменение статуса и деталей записи.
+                        </DialogDescription>
+                    </DialogHeader>
+                     {selectedAppointment && (
+                        <div className="grid gap-4 py-4">
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Клиент</Label>
+                                <div className="col-span-3 font-medium">
+                                    {selectedAppointment.client_phone === 'ANONYMOUS' ? 'Анонимный клиент' : 
+                                     `${selectedAppointment.client_first_name} ${selectedAppointment.client_last_name}`}
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Услуга</Label>
+                                <div className="col-span-3 font-medium">
+                                     {serviceMap[selectedAppointment.service_id]}
+                                </div>
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Статус</Label>
+                                <div className="col-span-3">
+                                    <Select
+                                        value={formData.status}
+                                        onValueChange={(val) => setFormData({ ...formData, status: val })}
+                                    >
+                                        <SelectTrigger suppressHydrationWarning>
+                                            <SelectValue placeholder="Статус" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="pending">Ожидание</SelectItem>
+                                            <SelectItem value="confirmed">Подтверждено</SelectItem>
+                                            <SelectItem value="arrived">Пришел</SelectItem>
+                                            <SelectItem value="no_show">Не пришел</SelectItem>
+                                            <SelectItem value="cancelled">Отменено</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                        </div>
+                     )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Закрыть</Button>
+                        <Button 
+                            onClick={() => updateStatusMutation.mutate({ id: selectedAppointment.id, status: formData.status })}
+                            disabled={updateStatusMutation.isPending}
+                        >
+                            {updateStatusMutation.isPending ? 'Сохранение...' : 'Сохранить'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
