@@ -208,7 +208,17 @@ export default function AppointmentsPage() {
             queryClient.invalidateQueries({ queryKey: ['appointments'] });
             toast.success('Запись создана');
             setIsBookingModalOpen(false);
-            setFormData({ serviceId: '', startTime: '', endTime: '', clientName: '', clientPhone: '', comment: '', status: 'pending' });
+            setFormData({ 
+                selectedServices: [], 
+                startTime: '', 
+                endTime: '', 
+                clientName: '', 
+                clientPhone: '', 
+                comment: '', 
+                status: 'pending',
+                totalPrice: 0,
+                payments: []
+            });
         },
         onError: (error: any) => {
             toast.error('Ошибка создания записи: ' + (error.response?.data?.error || error.message));
@@ -335,7 +345,8 @@ export default function AppointmentsPage() {
                 clientPhone: '', 
                 comment: '', 
                 status: 'pending',
-                totalPrice: 0 
+                totalPrice: 0,
+                payments: []
             });
 
         } catch (e) {
