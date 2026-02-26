@@ -33,9 +33,24 @@ const DAYS_RU = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 export default function SchedulePage() {
     const queryClient = useQueryClient();
     const { selectedBranchID, branches } = useBranch();
-    const [currentMonth, setCurrentMonth] = useState(DateTime.now().startOf('month'));
+    const [viewMode, setViewMode] = useState<'week' | 'month'>('month');
+    const [currentDate, setCurrentDate] = useState(DateTime.now().startOf(viewMode));
+    
+    // Derived month start for data fetching
+    const dataMonth = currentDate.startOf('month').toISODate()!;
+
     const [editingShift, setEditingShift] = useState<{ empID: number; date: string } | null>(null);
+    const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [newShift, setNewShift] = useState({ start: '09:00', end: '21:00', shiftType: 'work' });
+    const [generatorData, setGeneratorData] = useState({
+        employeeID: '',
+        startDate: DateTime.now().toISODate()!,
+        endDate: DateTime.now().plus({ months: 1 }).toISODate()!,
+        workDays: 2,
+        offDays: 2,
+        startTime: '09:00',
+        endTime: '21:00',
+    });
 
     // Queries
     const { data: company } = useQuery({
@@ -49,20 +64,19 @@ export default function SchedulePage() {
     const { data: employees } = useQuery({
         queryKey: ['employees', selectedBranchID],
         queryFn: async () => {
-            // Filter by branch locally or via API if supported
-            const res = await api.get(`/employees?company_id=${company.id}`);
+            const res = await api.get(`/employees?company_id=${company?.id}`);
             return res.data.filter((e: any) => e.branch_id.toString() === selectedBranchID);
         },
         enabled: !!selectedBranchID && !!company?.id,
     });
 
     const { data: shifts, isLoading: isLoadingShifts } = useQuery({
-        queryKey: ['shifts', selectedBranchID, currentMonth.toISODate()],
+        queryKey: ['shifts', selectedBranchID, dataMonth],
         queryFn: async () => {
             const res = await api.get('/shifts', {
                 params: {
                     branch_id: selectedBranchID,
-                    month: currentMonth.toISO()
+                    month: dataMonth
                 }
             });
             return res.data;
@@ -72,19 +86,59 @@ export default function SchedulePage() {
 
     // Mutations
     const saveShiftMutation = useMutation({
-        mutationFn: (data: any) => api.post('/shifts', [data]),
+        mutationFn: (data: any[]) => api.post('/shifts', data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['shifts'] });
             toast.success('График обновлен');
             setEditingShift(null);
+            setIsGeneratorOpen(false);
         },
     });
 
+    const handleGenerateShifts = () => {
+        if (!generatorData.employeeID || !selectedBranchID) {
+            toast.error('Выберите сотрудника');
+            return;
+        }
+
+        const start = DateTime.fromISO(generatorData.startDate);
+        const end = DateTime.fromISO(generatorData.endDate);
+        const batch: any[] = [];
+        
+        let current = start;
+        let dayCounter = 0;
+        const cycleLength = generatorData.workDays + generatorData.offDays;
+
+        while (current <= end) {
+            const isWorkDay = dayCounter % cycleLength < generatorData.workDays;
+            
+            batch.push({
+                employee_id: parseInt(generatorData.employeeID),
+                branch_id: parseInt(selectedBranchID),
+                date: current.toISODate() + 'T00:00:00Z',
+                start_time: generatorData.startTime,
+                end_time: generatorData.endTime,
+                shift_type: isWorkDay ? 'work' : 'day_off',
+            });
+
+            current = current.plus({ days: 1 });
+            dayCounter++;
+        }
+
+        saveShiftMutation.mutate(batch);
+    };
+
     // Calendar generation
-    const daysInMonth = currentMonth.daysInMonth;
     const days = useMemo(() => {
-        return Array.from({ length: daysInMonth }, (_, i) => currentMonth.set({ day: i + 1 }));
-    }, [currentMonth, daysInMonth]);
+        if (viewMode === 'month') {
+            const daysInMonth = currentDate.daysInMonth!;
+            return Array.from({ length: daysInMonth }, (_, i) => currentDate.set({ day: i + 1 }));
+        } else {
+            // Week view: 7 days starting from start of week
+            const startOfWeek = currentDate.startOf('week');
+            return Array.from({ length: 7 }, (_, i) => startOfWeek.plus({ days: i }));
+        }
+    }, [currentDate, viewMode]);
 
     const getShiftForMaster = (empID: number, day: DateTime) => {
         return shifts?.find((s: any) => {
@@ -93,8 +147,12 @@ export default function SchedulePage() {
         });
     };
 
-    const handleMonthChange = (direction: number) => {
-        setCurrentMonth(currentMonth.plus({ months: direction }));
+    const handleDateChange = (direction: number) => {
+        if (viewMode === 'month') {
+            setCurrentDate(currentDate.plus({ months: direction }));
+        } else {
+            setCurrentDate(currentDate.plus({ weeks: direction }));
+        }
     };
 
     const handleCellClick = (empID: number, day: DateTime) => {
@@ -107,21 +165,119 @@ export default function SchedulePage() {
         }
     };
 
+    const handleDownloadPDF = () => {
+        window.print();
+    };
+
+    const handleExportExcel = () => {
+        const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+        const url = `${baseURL}/reports/schedule/excel?branch_id=${selectedBranchID}&month=${currentDate.toISODate()}`;
+        window.open(url, '_blank');
+    };
+
     const handleSaveShift = () => {
         if (!editingShift) return;
-        saveShiftMutation.mutate({
+        saveShiftMutation.mutate([{
             employee_id: editingShift.empID,
             branch_id: parseInt(selectedBranchID),
             date: editingShift.date + 'T00:00:00Z',
             start_time: newShift.start,
             end_time: newShift.end,
             shift_type: newShift.shiftType,
-        });
+        }]);
     };
 
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            <style jsx global>{`
+                @media print {
+                    /* Hide everything in the layout including all sidebar slots */
+                    header, nav, aside, button, .print\\:hidden, 
+                    [data-sidebar], [data-slot="sidebar"], [data-slot="sidebar-gap"], 
+                    [data-slot="sidebar-rail"], [data-slot="sidebar-trigger"],
+                    .fixed, .sticky {
+                        display: none !important;
+                    }
+                    
+                    /* Reset main content positioning and un-flex ALL layout containers */
+                    body, html, #__next, 
+                    [data-slot="sidebar-wrapper"], 
+                    .flex, .flex-col, 
+                    main, 
+                    div {
+                        display: block !important;
+                        height: auto !important;
+                        min-height: auto !important;
+                        overflow: visible !important;
+                        position: static !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        border: none !important;
+                        box-shadow: none !important;
+                        -webkit-print-color-adjust: exact;
+                        width: auto !important;
+                    }
+
+                    main {
+                        width: 100% !important;
+                    }
+
+                    /* Only show the printable section */
+                    .space-y-6 > *:not(#printable-schedule) {
+                        display: none !important;
+                    }
+
+                    #printable-schedule {
+                        display: block !important;
+                        position: static !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        color: black !important;
+                        background: white !important;
+                        font-size: 8px !important;
+                        overflow: visible !important;
+                    }
+
+                    table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        table-layout: auto !important;
+                        page-break-inside: auto !important;
+                        break-inside: auto !important;
+                    }
+
+                    thead {
+                        display: table-header-group !important;
+                    }
+                    
+                    tbody {
+                        display: table-row-group !important;
+                    }
+
+                    tr {
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                    }
+
+                    th, td {
+                        padding: 2px !important;
+                        border: 0.5pt solid black !important;
+                        break-inside: avoid !important;
+                    }
+
+                    /* Footer signature block */
+                    #printable-schedule > div.mt-24 {
+                        page-break-inside: avoid !important;
+                        break-inside: avoid !important;
+                        display: grid !important;
+                        grid-template-cols: 1fr 1fr !important;
+                        gap: 40px !important;
+                        margin-top: 120px !important; /* Extra space in print */
+                    }
+                }
+            `}</style>
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl border border-neutral-200">
                 <div>
@@ -131,6 +287,12 @@ export default function SchedulePage() {
                     <p className="text-neutral-500 text-sm mt-1">Настройка смен персонала на месяц</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <Button 
+                        onClick={() => setIsGeneratorOpen(true)}
+                        className="bg-neutral-900 text-white hover:bg-neutral-800 gap-2 shadow-sm transition-all"
+                    >
+                        <CalendarIcon className="h-4 w-4" /> Генерация графика
+                    </Button>
                     <div className="flex flex-col items-end gap-0.5">
                         <Badge variant="outline" className="text-[10px] border-neutral-200 text-neutral-400 font-bold uppercase tracking-tighter">
                             Выбран филиал:
@@ -139,8 +301,19 @@ export default function SchedulePage() {
                             {branches?.find((b: any) => b.id.toString() === selectedBranchID)?.name || '...'}
                         </span>
                     </div>
-                    <Button variant="outline" className="border-neutral-200 text-neutral-600 gap-2">
-                        <Download className="h-4 w-4" /> Выгрузить в PDF
+                    <Button 
+                        variant="outline" 
+                        className="border-neutral-200 text-neutral-600 gap-2"
+                        onClick={handleExportExcel}
+                    >
+                        <Building2 className="h-4 w-4" /> В Excel
+                    </Button>
+                    <Button 
+                        variant="outline" 
+                        className="border-neutral-200 text-neutral-600 gap-2"
+                        onClick={handleDownloadPDF}
+                    >
+                        <Download className="h-4 w-4" /> В PDF
                     </Button>
                 </div>
             </div>
@@ -149,23 +322,43 @@ export default function SchedulePage() {
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                     <div className="flex items-center bg-white border border-neutral-200 rounded-lg p-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-500" onClick={() => handleMonthChange(-1)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-500" onClick={() => handleDateChange(-1)}>
                             <ChevronLeft className="h-4 w-4" />
                         </Button>
                         <div className="px-4 font-bold text-neutral-900 min-w-[150px] text-center capitalize">
-                            {currentMonth.setLocale('ru').toFormat('LLLL yyyy')}
+                            {currentDate.setLocale('ru').toFormat(viewMode === 'month' ? 'LLLL yyyy' : 'dd LLLL')}
                         </div>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-500" onClick={() => handleMonthChange(1)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-neutral-500" onClick={() => handleDateChange(1)}>
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
-                    <Button variant="outline" size="sm" className="bg-white border-neutral-200 text-neutral-600" onClick={() => setCurrentMonth(DateTime.now().startOf('month'))}>
+                    <Button variant="outline" size="sm" className="bg-white border-neutral-200 text-neutral-600" onClick={() => setCurrentDate(DateTime.now().startOf(viewMode))}>
                         Сегодня
                     </Button>
                 </div>
                 <div className="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg">
-                    <Button variant="ghost" size="sm" className="text-[12px] h-7 px-3">Неделя</Button>
-                    <Button variant="secondary" size="sm" className="text-[12px] h-7 px-3 bg-white shadow-sm font-bold">Месяц</Button>
+                    <Button 
+                        variant={viewMode === 'week' ? "secondary" : "ghost"} 
+                        size="sm" 
+                        className={`text-[12px] h-7 px-3 ${viewMode === 'week' ? 'bg-white shadow-sm font-bold' : ''}`}
+                        onClick={() => {
+                            setViewMode('week');
+                            setCurrentDate(currentDate.startOf('week'));
+                        }}
+                    >
+                        Неделя
+                    </Button>
+                    <Button 
+                        variant={viewMode === 'month' ? "secondary" : "ghost"} 
+                        size="sm" 
+                        className={`text-[12px] h-7 px-3 ${viewMode === 'month' ? 'bg-white shadow-sm font-bold' : ''}`}
+                        onClick={() => {
+                            setViewMode('month');
+                            setCurrentDate(currentDate.startOf('month'));
+                        }}
+                    >
+                        Месяц
+                    </Button>
                 </div>
             </div>
 
@@ -210,7 +403,8 @@ export default function SchedulePage() {
                                             const totalHours = empShifts.reduce((acc: number, s: any) => {
                                                 const start = DateTime.fromFormat(s.start_time, 'HH:mm');
                                                 const end = DateTime.fromFormat(s.end_time, 'HH:mm');
-                                                return acc + end.diff(start, 'hours').hours;
+                                                // Subtract 1 hour for lunch
+                                                return acc + Math.max(0, end.diff(start, 'hours').hours - 1);
                                             }, 0);
                                             return (
                                                 <div className="text-neutral-500 text-sm">
@@ -240,14 +434,16 @@ export default function SchedulePage() {
                                                     };
                                                     const config = typeConfig[shiftType as keyof typeof typeConfig] || typeConfig.work;
                                                     
-                                                    return shiftType === 'work' ? (
+                                                    if (shiftType !== 'work') return null;
+
+                                                    const start = DateTime.fromFormat(shift.start_time, 'HH:mm');
+                                                    const end = DateTime.fromFormat(shift.end_time, 'HH:mm');
+                                                    const duration = Math.max(0, end.diff(start, 'hours').hours - 1);
+
+                                                    return (
                                                         <div className={`${config.bg} border ${config.border} rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm`}>
                                                             <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.start_time}</span>
                                                             <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.end_time}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`${config.bg} border ${config.border} rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 ${shiftType === 'day_off' ? 'opacity-60' : ''}`}>
-                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight uppercase`}>{config.label}</span>
                                                         </div>
                                                     );
                                                 })() : (
@@ -326,6 +522,141 @@ export default function SchedulePage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Shift Generator Dialog */}
+            <Dialog open={isGeneratorOpen} onOpenChange={setIsGeneratorOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle>Генерация графика</DialogTitle>
+                        <DialogDescription>
+                            Массовое создание смен по паттерну (например, 2/2).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Сотрудник</Label>
+                            <Select value={generatorData.employeeID} onValueChange={(val) => setGeneratorData({ ...generatorData, employeeID: val })}>
+                                <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Выберите сотрудника" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {employees?.map((emp: any) => (
+                                        <SelectItem key={emp.id} value={emp.id.toString()}>{emp.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Период</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Input type="date" value={generatorData.startDate} onChange={(e) => setGeneratorData({ ...generatorData, startDate: e.target.value })} />
+                                <span>-</span>
+                                <Input type="date" value={generatorData.endDate} onChange={(e) => setGeneratorData({ ...generatorData, endDate: e.target.value })} />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Паттерн</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <div className="flex-1 space-y-1">
+                                    <Label className="text-[10px] uppercase text-neutral-400">Раб. дни</Label>
+                                    <Input type="number" value={generatorData.workDays} onChange={(e) => setGeneratorData({ ...generatorData, workDays: parseInt(e.target.value) || 1 })} />
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                    <Label className="text-[10px] uppercase text-neutral-400">Выходные</Label>
+                                    <Input type="number" value={generatorData.offDays} onChange={(e) => setGeneratorData({ ...generatorData, offDays: parseInt(e.target.value) || 1 })} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Часы</Label>
+                            <div className="col-span-3 flex items-center gap-2">
+                                <Input type="time" value={generatorData.startTime} onChange={(e) => setGeneratorData({ ...generatorData, startTime: e.target.value })} />
+                                <span>-</span>
+                                <Input type="time" value={generatorData.endTime} onChange={(e) => setGeneratorData({ ...generatorData, endTime: e.target.value })} />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsGeneratorOpen(false)}>Отмена</Button>
+                        <Button 
+                            onClick={handleGenerateShifts} 
+                            disabled={saveShiftMutation.isPending || !generatorData.employeeID}
+                            className="bg-neutral-900 text-white"
+                        >
+                            {saveShiftMutation.isPending ? "Генерация..." : "Сгенерировать график"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Printable Section (Hidden on screen, visible on print) */}
+            <div id="printable-schedule" className="hidden">
+                <div className="text-center mb-6">
+                    <h1 className="text-xl font-bold uppercase tracking-tight">График работы персонала</h1>
+                    <div className="text-sm mt-1">
+                        <span>Организация: {company?.name}</span> | 
+                        <span> Филиал: {branches?.find((b: any) => b.id.toString() === selectedBranchID)?.name}</span>
+                    </div>
+                    <div className="text-sm font-medium mt-1">
+                        Период: {currentDate.setLocale('ru').toFormat(viewMode === 'month' ? 'LLLL yyyy' : 'dd LLLL yyyy')}
+                    </div>
+                </div>
+
+                <table className="w-full border-collapse border border-black text-[9px]">
+                    <thead>
+                        <tr className="bg-gray-50">
+                            <th className="border border-black p-2 text-left">Сотрудник</th>
+                            <th className="border border-black p-2 w-10 text-center">Часы</th>
+                            {days.map(day => (
+                                <th key={day.toISO()} className="border border-black p-1 text-center min-w-[30px]">
+                                    {day.day}<br/>{DAYS_RU[day.weekday % 7]}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {employees?.map((emp: any) => {
+                            const empShifts = shifts?.filter((s: any) => s.employee_id === emp.id && s.shift_type === 'work') || [];
+                            const totalHours = empShifts.reduce((acc: number, s: any) => {
+                                const start = DateTime.fromFormat(s.start_time, 'HH:mm');
+                                const end = DateTime.fromFormat(s.end_time, 'HH:mm');
+                                // Subtract 1 hour for lunch
+                                return acc + Math.max(0, end.diff(start, 'hours').hours - 1);
+                            }, 0);
+
+                            return (
+                                <tr key={emp.id}>
+                                    <td className="border border-black p-2 font-bold whitespace-nowrap">{emp.name}</td>
+                                    <td className="border border-black p-2 text-center font-bold">{totalHours.toFixed(0)}</td>
+                                    {days.map(day => {
+                                        const shift = getShiftForMaster(emp.id, day);
+                                        const isWork = shift?.shift_type === 'work';
+                                        if (!isWork) return <td key={day.toISO()} className="border border-black p-0 text-center bg-gray-50"></td>;
+                                        
+                                        const start = DateTime.fromFormat(shift.start_time, 'HH:mm');
+                                        const end = DateTime.fromFormat(shift.end_time, 'HH:mm');
+                                        const duration = Math.max(0, end.diff(start, 'hours').hours - 1);
+
+                                        return (
+                                            <td key={day.toISO()} className="border border-black p-0 text-center font-medium">
+                                                {duration > 0 ? duration : ''}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+
+                <div className="mt-24 grid grid-cols-2 gap-20 text-[10px]">
+                    <div className="border-t border-black pt-1">Подпись руководителя: ____________________</div>
+                    <div className="border-t border-black pt-1 text-right">Дата: {DateTime.now().toFormat('dd.MM.yyyy')}</div>
+                </div>
+            </div>
         </div>
     );
 }

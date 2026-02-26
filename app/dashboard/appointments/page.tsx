@@ -39,7 +39,12 @@ export default function AppointmentsPage() {
         comment: '',
         status: 'pending',
         totalPrice: 0,
+        payments: [] as any[], // Array of { method: string, amount: number }
     });
+
+    const totalPaid = useMemo(() => {
+        return formData.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    }, [formData.payments]);
 
     // Search customer by phone
     const { data: foundCustomer } = useQuery({
@@ -467,6 +472,7 @@ export default function AppointmentsPage() {
                                                         startTime: formatTimeRaw(app.start_time),
                                                         endTime: formatTimeRaw(app.end_time),
                                                         selectedServices: app.services || [],
+                                                        payments: app.payments || [],
                                                         totalPrice: app.total_price || 0
                                                     });
                                                     setIsEditModalOpen(true);
@@ -715,6 +721,80 @@ export default function AppointmentsPage() {
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label className="text-right mt-2">Оплата</Label>
+                                <div className="col-span-3 space-y-3">
+                                    <div className="flex items-center gap-2">
+                                        <Select 
+                                            onValueChange={(val) => {
+                                                const remaining = formData.totalPrice - totalPaid;
+                                                if (remaining > 0) {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        payments: [...prev.payments, { method: val, amount: remaining }]
+                                                    }));
+                                                } else {
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        payments: [...prev.payments, { method: val, amount: 0 }]
+                                                    }));
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger className="h-8">
+                                                <SelectValue placeholder="Добавить платеж" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="cash">Наличные</SelectItem>
+                                                <SelectItem value="card">Карта</SelectItem>
+                                                <SelectItem value="other">Другое (Сертификат...)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    {formData.payments.map((p, idx) => (
+                                        <div key={idx} className="flex items-center gap-2">
+                                            <Badge variant="outline" className="w-24 justify-center">
+                                                {p.method === 'cash' ? 'Нал' : p.method === 'card' ? 'Безнал' : 'Другое'}
+                                            </Badge>
+                                            <Input 
+                                                type="number" 
+                                                value={p.amount} 
+                                                onChange={(e) => {
+                                                    const newPayments = [...formData.payments];
+                                                    newPayments[idx].amount = parseFloat(e.target.value) || 0;
+                                                    setFormData({ ...formData, payments: newPayments });
+                                                }}
+                                                className="h-8 w-24 text-right font-bold"
+                                            />
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-6 w-6 text-neutral-400"
+                                                onClick={() => {
+                                                    setFormData({
+                                                        ...formData,
+                                                        payments: formData.payments.filter((_, i) => i !== idx)
+                                                    });
+                                                }}
+                                            >
+                                                ×
+                                            </Button>
+                                        </div>
+                                    ))}
+
+                                    <div className="flex items-center justify-between pt-1 border-t border-neutral-100 text-xs">
+                                        <span className="text-neutral-500 font-medium">Оплачено: {totalPaid} / {formData.totalPrice} BYN</span>
+                                        {formData.totalPrice - totalPaid > 0 && (
+                                            <span className="text-red-500 font-bold">Остаток: {formData.totalPrice - totalPaid} BYN</span>
+                                        )}
+                                        {formData.totalPrice - totalPaid <= 0 && totalPaid > 0 && (
+                                            <span className="text-green-600 font-bold">Оплачено полностью</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
                              <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Статус</Label>
                                 <div className="col-span-3">
@@ -768,6 +848,10 @@ export default function AppointmentsPage() {
                                         service_id: s.service_id || s.id,
                                         price: s.price,
                                         duration_minutes: s.duration_minutes || s.duration
+                                    })),
+                                    payments: formData.payments.map(p => ({
+                                        amount: Number(p.amount),
+                                        method: p.method
                                     }))
                                 });
 
