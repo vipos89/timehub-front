@@ -362,22 +362,16 @@ export default function ServicesPage() {
                                     </div>
                                     <div className="grid gap-2">
                                         <Label className="font-bold text-xs text-neutral-700">Длительность (мин)</Label>
-                                        <Select
-                                            value={selectedService.duration_minutes?.toString()}
-                                            onValueChange={(val) => {
-                                                const updated = services.map((s: any) => s.id === selectedService.id ? { ...s, duration_minutes: parseInt(val) } : s);
+                                        <Input
+                                            type="number"
+                                            onFocus={(e) => e.target.select()}
+                                            value={selectedService.duration_minutes}
+                                            onChange={(e) => {
+                                                const updated = services.map((s: any) => s.id === selectedService.id ? { ...s, duration_minutes: parseInt(e.target.value) || 0 } : s);
                                                 queryClient.setQueryData(['all-services', selectedBranchID], updated);
                                             }}
-                                        >
-                                            <SelectTrigger className="border-neutral-200 font-bold">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {[15, 30, 45, 60, 90, 120, 180, 240].map(m => (
-                                                    <SelectItem key={m} value={m.toString()}>{m} мин ({(m / 60).toFixed(1)} ч)</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                            className="border-neutral-200 focus:ring-neutral-900 font-bold"
+                                        />
                                     </div>
                                 </CardContent>
                             </Card>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DateTime } from 'luxon';
@@ -31,14 +31,62 @@ export default function AppointmentsPage() {
     const [selectedSlot, setSelectedSlot] = useState<{ empID: number; time: DateTime } | null>(null);
     const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
     const [formData, setFormData] = useState({
-        serviceId: '',
+        selectedServices: [] as any[], // Array of service objects from employeeServices
         startTime: '',
         endTime: '',
         clientName: '',
         clientPhone: '',
         comment: '',
         status: 'pending',
+        totalPrice: 0,
     });
+
+    // Search customer by phone
+    const { data: foundCustomer } = useQuery({
+        queryKey: ['customer-search', formData.clientPhone, selectedBranchID],
+        queryFn: async () => {
+            if (formData.clientPhone.length < 5) return null;
+            try {
+                const res = await api.get('/customers/by-phone', {
+                    params: { branch_id: selectedBranchID, phone: formData.clientPhone }
+                });
+                return res.data;
+            } catch (e) {
+                return null;
+            }
+        },
+        enabled: formData.clientPhone.length >= 5 && !!selectedBranchID,
+    });
+
+    // Auto-fill name if customer found (only if name is empty)
+    useEffect(() => {
+        if (foundCustomer && !formData.clientName) {
+            setFormData(prev => ({
+                ...prev,
+                clientName: `${foundCustomer.first_name} ${foundCustomer.last_name}`.trim(),
+            }));
+        }
+    }, [foundCustomer, formData.clientName]);
+
+    // Recalculate duration and price
+    useEffect(() => {
+        let totalDuration = 0;
+        let totalPrice = 0;
+        formData.selectedServices.forEach(s => {
+            totalDuration += s.duration_minutes || s.duration || 0;
+            totalPrice += s.price || 0;
+        });
+
+        if (formData.startTime) {
+            const start = DateTime.fromFormat(formData.startTime, 'HH:mm');
+            const end = start.plus({ minutes: totalDuration || 60 });
+            setFormData(prev => ({ 
+                ...prev, 
+                endTime: end.toFormat('HH:mm'),
+                totalPrice: totalPrice 
+            }));
+        }
+    }, [formData.selectedServices, formData.startTime]);
 
     // Fetch data...
     const { data: company } = useQuery({
@@ -236,33 +284,53 @@ export default function AppointmentsPage() {
         setIsBookingModalOpen(true);
     };
 
-    // ИЗМЕНЕНО: Отправляем время как есть, без конвертации в UTC
     const handleCreateBooking = async () => {
-        if (!selectedSlot || !formData.serviceId) {
-            toast.error('Заполните обязательные поля (Услуга)');
+        if (!selectedSlot || formData.selectedServices.length === 0 || !company?.id) {
+            toast.error('Выберите хотя бы одну услугу');
             return;
         }
 
         try {
-            // 1. Create Client
+            // 1. Create or Update Client
+            const [firstName, ...lastNameParts] = formData.clientName.split(' ');
+            const lastName = lastNameParts.join(' ');
+
             const clientRes = await createCustomerMutation.mutateAsync({
-                first_name: formData.clientName,
-                phone: formData.clientPhone,
+                company_id: company.id,
                 branch_id: Number(selectedBranchID),
+                first_name: firstName,
+                last_name: lastName,
+                phone: formData.clientPhone,
             });
 
-            // 2. Create Booking - формируем ISO строку без timezone (как локальное время)
+            // 2. Create Booking
             const dateStr = currentDate.toFormat('yyyy-MM-dd');
-            const startISO = `${dateStr}T${formData.startTime}:00`; // Без Z и без UTC!
+            const startISO = `${dateStr}T${formData.startTime}:00`;
             const endISO = `${dateStr}T${formData.endTime}:00`;
 
             await createBookingMutation.mutateAsync({
                 employee_id: selectedSlot.empID,
-                service_id: Number(formData.serviceId),
                 client_id: clientRes.data.id,
                 start_time: startISO,
                 end_time: endISO,
-                comment: formData.comment
+                comment: formData.comment,
+                total_price: formData.totalPrice,
+                services: formData.selectedServices.map(s => ({
+                    service_id: s.service_id,
+                    price: s.price,
+                    duration_minutes: s.duration_minutes
+                }))
+            });
+
+            setFormData({ 
+                selectedServices: [], 
+                startTime: '', 
+                endTime: '', 
+                clientName: '', 
+                clientPhone: '', 
+                comment: '', 
+                status: 'pending',
+                totalPrice: 0 
             });
 
         } catch (e) {
@@ -361,7 +429,11 @@ export default function AppointmentsPage() {
                                     ?.filter((app: any) => app.employee_id === emp.id && app.status !== 'cancelled')
                                     .map((app: any) => {
                                         const customer = customerMap[app.client_id];
-                                        const serviceName = serviceMap[app.service_id] || `Service #${app.service_id}`;
+                                        
+                                        // Get service names from the services array
+                                        const serviceNames = app.services?.map((s: any) => 
+                                            s.service?.name || serviceMap[s.service_id]
+                                        ).filter(Boolean).join(', ') || 'Нет услуг';
 
                                         return (
                                             <div
@@ -371,21 +443,31 @@ export default function AppointmentsPage() {
                                                     ...getAppointmentStyle(app.start_time, app.end_time),
                                                     backgroundColor: app.status === 'arrived' ? 'rgba(219, 234, 254, 0.9)' :
                                                                      app.status === 'no_show' ? 'rgba(254, 226, 226, 0.9)' :
+                                                                     app.status === 'pending' ? 'rgba(254, 243, 199, 0.9)' :
                                                                      'rgba(236, 253, 245, 0.9)',
                                                     borderColor: app.status === 'arrived' ? 'rgba(96, 165, 250, 0.4)' :
                                                                  app.status === 'no_show' ? 'rgba(248, 113, 113, 0.4)' :
+                                                                 app.status === 'pending' ? 'rgba(251, 191, 36, 0.4)' :
                                                                  'rgba(52, 211, 153, 0.4)',
                                                     color: app.status === 'arrived' ? '#1e40af' :
                                                            app.status === 'no_show' ? '#991b1b' :
+                                                           app.status === 'pending' ? '#92400e' :
                                                            '#065f46'
                                                 }}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setSelectedAppointment(app);
+                                                    const customer = customerMap[app.client_id];
                                                     setFormData({
                                                         ...formData,
                                                         status: app.status,
-                                                        comment: app.comment || ''
+                                                        comment: app.comment || '',
+                                                        clientName: app.client_phone !== 'ANONYMOUS' ? (app.client_first_name ? `${app.client_first_name} ${app.client_last_name}`.trim() : (customer ? `${customer.first_name} ${customer.last_name}`.trim() : '')) : 'Клиент',
+                                                        clientPhone: app.client_phone !== 'ANONYMOUS' ? (app.client_phone || customer?.phone || '') : '',
+                                                        startTime: formatTimeRaw(app.start_time),
+                                                        endTime: formatTimeRaw(app.end_time),
+                                                        selectedServices: app.services || [],
+                                                        totalPrice: app.total_price || 0
                                                     });
                                                     setIsEditModalOpen(true);
                                                 }}
@@ -399,7 +481,7 @@ export default function AppointmentsPage() {
                                                     {app.client_phone !== 'ANONYMOUS' ? `${app.client_first_name} ${app.client_last_name}` : `Клиент`}
                                                 </div>
                                                 <div className="text-[10px] opacity-80 truncate">
-                                                    {serviceName}
+                                                    {serviceNames}
                                                 </div>
                                             </div>
                                         )
@@ -420,24 +502,22 @@ export default function AppointmentsPage() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="service" className="text-right">Услуга</Label>
-                            <div className="col-span-3">
+                        <div className="grid grid-cols-4 items-start gap-4">
+                            <Label htmlFor="service" className="text-right mt-2">Услуги</Label>
+                            <div className="col-span-3 space-y-2">
                                 <Select
-                                    value={formData.serviceId}
                                     onValueChange={(val) => {
                                         const es = employeeServices?.find((s: any) => s.service_id.toString() === val);
-                                        if (es && formData.startTime) {
-                                            const start = DateTime.fromFormat(formData.startTime, 'HH:mm');
-                                            const end = start.plus({ minutes: es.duration_minutes || 60 });
-                                            setFormData(prev => ({ ...prev, serviceId: val, endTime: end.toFormat('HH:mm') }));
-                                        } else {
-                                            setFormData(prev => ({ ...prev, serviceId: val }));
+                                        if (es && !formData.selectedServices.find(s => s.service_id.toString() === val)) {
+                                            setFormData(prev => ({ 
+                                                ...prev, 
+                                                selectedServices: [...prev.selectedServices, es] 
+                                            }));
                                         }
                                     }}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Выберите услугу" />
+                                        <SelectValue placeholder="Добавить услугу" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {employeeServices?.map((es: any) => (
@@ -447,6 +527,29 @@ export default function AppointmentsPage() {
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                <div className="flex flex-wrap gap-2">
+                                    {formData.selectedServices.map(s => (
+                                        <Badge key={s.service_id} variant="secondary" className="gap-1 pr-1 py-1">
+                                            {s.service?.name || serviceMap[s.service_id] || 'Услуга'}
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="h-4 w-4 rounded-full" 
+                                                onClick={() => setFormData(prev => ({
+                                                    ...prev,
+                                                    selectedServices: prev.selectedServices.filter(item => item.service_id !== s.service_id)
+                                                }))}
+                                            >
+                                                <span className="text-[10px]">×</span>
+                                            </Button>
+                                        </Badge>
+                                    ))}
+                                </div>
+                                {formData.totalPrice > 0 && (
+                                    <div className="text-xs font-bold text-neutral-500">
+                                        Итого: {formData.totalPrice} BYN
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -502,7 +605,7 @@ export default function AppointmentsPage() {
                         <Button variant="outline" onClick={() => setIsBookingModalOpen(false)}>Отмена</Button>
                         <Button
                             onClick={handleCreateBooking}
-                            disabled={createCustomerMutation.isPending || createBookingMutation.isPending || !formData.serviceId}
+                            disabled={createCustomerMutation.isPending || createBookingMutation.isPending || formData.selectedServices.length === 0}
                         >
                             {(createCustomerMutation.isPending || createBookingMutation.isPending) ? 'Создание...' : 'Создать запись'}
                         </Button>
@@ -521,19 +624,97 @@ export default function AppointmentsPage() {
                     </DialogHeader>
                      {selectedAppointment && (
                         <div className="grid gap-4 py-4">
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Клиент</Label>
-                                <div className="col-span-3 font-medium">
-                                    {selectedAppointment.client_phone === 'ANONYMOUS' ? 'Анонимный клиент' : 
-                                     `${selectedAppointment.client_first_name} ${selectedAppointment.client_last_name}`}
-                                </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Имя</Label>
+                                <Input
+                                    value={formData.clientName}
+                                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
+                                    className="col-span-3"
+                                />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Услуга</Label>
-                                <div className="col-span-3 font-medium">
-                                     {serviceMap[selectedAppointment.service_id]}
+                                <Label className="text-right">Телефон</Label>
+                                <Input
+                                    value={formData.clientPhone}
+                                    onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
+                                    className="col-span-3"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-4 items-start gap-4">
+                                <Label className="text-right mt-2">Услуги</Label>
+                                <div className="col-span-3 space-y-2">
+                                    <Select
+                                        onValueChange={(val) => {
+                                            const es = allServices?.find((s: any) => s.id.toString() === val);
+                                            if (es && !formData.selectedServices.find(s => s.service_id?.toString() === val || s.id?.toString() === val)) {
+                                                // Convert to AppointmentService format
+                                                const newS = {
+                                                    service_id: es.id,
+                                                    price: es.price,
+                                                    duration_minutes: es.duration_minutes,
+                                                    service: es // for display
+                                                };
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    selectedServices: [...prev.selectedServices, newS] 
+                                                }));
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Добавить услугу" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {allServices?.map((s: any) => (
+                                                <SelectItem key={s.id} value={s.id.toString()}>
+                                                    {s.name} ({s.duration_minutes} мин) - {s.price} BYN
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <div className="flex flex-wrap gap-2">
+                                        {formData.selectedServices.map((s, idx) => (
+                                            <Badge key={idx} variant="secondary" className="gap-1 pr-1 py-1">
+                                                {s.service?.name || serviceMap[s.service_id]}
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-4 w-4 rounded-full" 
+                                                    onClick={() => setFormData(prev => ({
+                                                        ...prev,
+                                                        selectedServices: prev.selectedServices.filter((_, i) => i !== idx)
+                                                    }))}
+                                                >
+                                                    <span className="text-[10px]">×</span>
+                                                </Button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    <div className="text-xs font-bold text-neutral-500">
+                                        Итого: {formData.totalPrice} BYN
+                                    </div>
                                 </div>
                             </div>
+
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Время</Label>
+                                <div className="col-span-3 flex items-center gap-2">
+                                    <Input
+                                        type="time"
+                                        value={formData.startTime}
+                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                                    />
+                                    <span>-</span>
+                                    <Input
+                                        type="time"
+                                        value={formData.endTime}
+                                        readOnly
+                                        className="bg-neutral-50"
+                                    />
+                                </div>
+                            </div>
+
                              <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Статус</Label>
                                 <div className="col-span-3">
@@ -559,7 +740,46 @@ export default function AppointmentsPage() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Закрыть</Button>
                         <Button 
-                            onClick={() => updateStatusMutation.mutate({ id: selectedAppointment.id, status: formData.status })}
+                            onClick={async () => {
+                                // 1. Update Customer info first
+                                const [firstName, ...lastNameParts] = formData.clientName.split(' ');
+                                const lastName = lastNameParts.join(' ');
+                                await createCustomerMutation.mutateAsync({
+                                    company_id: company.id,
+                                    branch_id: Number(selectedBranchID),
+                                    first_name: firstName,
+                                    last_name: lastName,
+                                    phone: formData.clientPhone,
+                                });
+
+                                // 2. Update Appointment
+                                const dateStr = selectedAppointment.start_time.slice(0, 10); // "YYYY-MM-DD"
+                                const startISO = `${dateStr}T${formData.startTime}:00`;
+                                const endISO = `${dateStr}T${formData.endTime}:00`;
+
+                                await api.put(`/bookings/${selectedAppointment.id}`, {
+                                    employee_id: selectedAppointment.employee_id,
+                                    client_id: selectedAppointment.client_id,
+                                    start_time: startISO,
+                                    end_time: endISO,
+                                    comment: formData.comment,
+                                    total_price: formData.totalPrice,
+                                    services: formData.selectedServices.map(s => ({
+                                        service_id: s.service_id || s.id,
+                                        price: s.price,
+                                        duration_minutes: s.duration_minutes || s.duration
+                                    }))
+                                });
+
+                                // 3. Update status if changed
+                                if (formData.status !== selectedAppointment.status) {
+                                    await updateStatusMutation.mutateAsync({ id: selectedAppointment.id, status: formData.status });
+                                }
+
+                                queryClient.invalidateQueries({ queryKey: ['appointments'] });
+                                setIsEditModalOpen(false);
+                                toast.success('Запись обновлена');
+                            }}
                             disabled={updateStatusMutation.isPending}
                         >
                             {updateStatusMutation.isPending ? 'Сохранение...' : 'Сохранить'}
