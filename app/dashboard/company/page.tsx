@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Building2, MapPin, Phone, Briefcase, Tag, Pencil } from 'lucide-react';
+import { Plus, Building2, MapPin, Phone, Briefcase, Tag, Pencil, Code, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBranch } from '@/context/branch-context';
 
@@ -29,6 +29,25 @@ export default function CompanyPage() {
     const queryClient = useQueryClient();
     const [isAddBranchOpen, setIsAddBranchOpen] = useState(false);
     const [isEditBranchOpen, setIsEditBranchOpen] = useState(false);
+    const [copiedBranchId, setCopiedBranchId] = useState<number | null>(null);
+    const [widgetColor, setWidgetColor] = useState('#000000');
+    
+    const copyToClipboard = (branchId: number) => {
+        const baseUrl = window.location.origin;
+        const code = `<!-- TimeHub Booking Widget -->
+<div id="timehub-widget-container" 
+     data-branch-id="${branchId}" 
+     data-accent="${widgetColor}"
+     data-base-url="${baseUrl}">
+</div>
+<script src="${baseUrl}/widget.js"></script>`;
+        
+        navigator.clipboard.writeText(code);
+        setCopiedBranchId(branchId);
+        toast.success('Код скопирован в буфер обмена');
+        setTimeout(() => setCopiedBranchId(null), 3000);
+    };
+
     const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
     const [isEditCompanyOpen, setIsEditCompanyOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<any>(null);
@@ -155,7 +174,15 @@ export default function CompanyPage() {
             queryClient.invalidateQueries({ queryKey: ['branches'] });
             toast.success('Филиал успешно добавлен');
             setIsAddBranchOpen(false);
-            setNewBranch({ name: '', country_id: undefined, city_id: undefined, address: '', phone: '' });
+            setNewBranch({ 
+                name: '', 
+                country_id: undefined, 
+                region_id: undefined,
+                district_id: undefined,
+                city_id: undefined, 
+                address: '', 
+                phone: '' 
+            });
             setBranchCountryId('');
         },
         onError: (err: any) => {
@@ -508,6 +535,7 @@ export default function CompanyPage() {
             <Tabs defaultValue="branches" className="w-full">
                 <TabsList className="bg-neutral-100 p-1 mb-8">
                     <TabsTrigger value="branches" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-6 h-9">Филиалы</TabsTrigger>
+                    <TabsTrigger value="widget" className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-6 h-9">Виджет записи</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="branches" className="space-y-6">
@@ -786,6 +814,67 @@ export default function CompanyPage() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+                </TabsContent>
+
+                <TabsContent value="widget" className="space-y-6">
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {branches?.map((branch: any) => (
+                            <Card key={branch.id} className="border-neutral-200 overflow-hidden hover:shadow-md transition-shadow">
+                                <CardHeader className="bg-neutral-50 border-b border-neutral-100 p-4">
+                                    <CardTitle className="text-lg font-bold">{branch.name}</CardTitle>
+                                </CardHeader>
+                                <CardContent className="p-4 space-y-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase text-neutral-400 tracking-wider">Цвет кнопки</Label>
+                                        <div className="flex gap-2">
+                                            <Input 
+                                                type="color" 
+                                                className="w-12 h-10 p-1 cursor-pointer" 
+                                                value={widgetColor}
+                                                onChange={(e) => setWidgetColor(e.target.value)}
+                                            />
+                                            <Input 
+                                                value={widgetColor}
+                                                onChange={(e) => setWidgetColor(e.target.value)}
+                                                className="font-mono text-sm uppercase"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-bold uppercase text-neutral-400 tracking-wider">Код для вставки</Label>
+                                        <div className="relative">
+                                            <pre className="p-3 bg-neutral-900 text-neutral-100 rounded-lg text-[10px] overflow-x-auto font-mono whitespace-pre-wrap">
+{`<!-- TimeHub Widget -->
+<div id="timehub-widget-container" 
+     data-branch-id="${branch.id}"
+     data-accent="${widgetColor}">
+</div>
+<script src="${typeof window !== 'undefined' ? window.location.origin : ''}/widget.js"></script>`}
+                                            </pre>
+                                            <Button 
+                                                size="sm" 
+                                                className="absolute top-2 right-2 h-7 px-2 bg-neutral-700 hover:bg-neutral-600 border-neutral-600"
+                                                onClick={() => copyToClipboard(branch.id)}
+                                            >
+                                                {copiedBranchId === branch.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-2">
+                                        <Button 
+                                            variant="outline" 
+                                            className="w-full text-xs gap-2"
+                                            onClick={() => window.open(`/widget/${branch.id}?accent=${encodeURIComponent(widgetColor)}`, '_blank')}
+                                        >
+                                            <Code className="h-3 w-3" /> Предпросмотр
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
                 </TabsContent>
             </Tabs>
         </div>
