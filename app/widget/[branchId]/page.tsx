@@ -114,6 +114,16 @@ export default function WidgetPage() {
         return selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
     }, [selectedServices]);
 
+    const isEmployeeCompatible = (emp: any) => {
+        if (selectedServices.length === 0) return true;
+        
+        // Check if the employee provides ALL selected services
+        // Based on service.employees relation fetched in groupedServices data
+        return selectedServices.every(svc => 
+            svc.employees?.some((e: any) => e.employee_id === emp.id)
+        );
+    };
+
     // Query for slots of a specific employee
     const { data: specificEmployeeSlots, isLoading: isLoadingSpecificSlots } = useQuery({
         queryKey: ['slots', selectedEmployee?.id, selectedDate],
@@ -131,8 +141,10 @@ export default function WidgetPage() {
     });
 
     // Query for slots of ALL employees (for "Any" mode)
+    // Only query slots for employees that provide the selected services
+    const compatibleEmployees = (employees || []).filter((emp: any) => isEmployeeCompatible(emp));
     const allEmployeeSlotQueries = useQueries({
-        queries: (employees || []).map((emp: any) => ({
+        queries: compatibleEmployees.map((emp: any) => ({
             queryKey: ['slots', emp.id, selectedDate],
             queryFn: async () => {
                 const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -140,7 +152,8 @@ export default function WidgetPage() {
                 return res.data?.map((s: any) => ({
                     ...s,
                     start_time: s.start_time.replace('Z', ''),
-                    end_time: s.end_time.replace('Z', '')
+                    end_time: s.end_time.replace('Z', ''),
+                    employee_id: emp.id // Inject employee_id here so we know who provides this slot!
                 })) || [];
             },
             enabled: !selectedEmployee?.id && !!selectedDate && !!employees,
@@ -271,16 +284,6 @@ export default function WidgetPage() {
         }
     };
 
-    const isEmployeeCompatible = (emp: any) => {
-        if (selectedServices.length === 0) return true;
-        
-        // Check if the employee provides ALL selected services
-        // Based on service.employees relation fetched in groupedServices data
-        return selectedServices.every(svc => 
-            svc.employees?.some((e: any) => e.employee_id === emp.id)
-        );
-    };
-
     useEffect(() => {
         window.scrollTo(0, 0);
     }, [view]);
@@ -340,11 +343,15 @@ export default function WidgetPage() {
                             className="flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200"
                         >
                             <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
-                                    <User className="h-6 w-6 text-neutral-400" />
+                                <div className={`h-12 w-12 rounded-full flex items-center justify-center overflow-hidden ${selectedEmployee ? 'bg-neutral-50 border border-neutral-100' : 'bg-transparent border-2 border-dashed border-neutral-200'}`}>
+                                    {selectedEmployee?.avatar_url ? (
+                                        <img src={selectedEmployee.avatar_url} alt="" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <User className={`h-6 w-6 ${selectedEmployee ? 'text-neutral-400' : 'text-neutral-300'}`} />
+                                    )}
                                 </div>
-                                <span className="font-medium text-neutral-700">
-                                    {selectedEmployee ? selectedEmployee.name : 'Любой специалист!!!!'}
+                                <span className={`font-medium ${selectedEmployee ? 'text-neutral-900' : 'text-neutral-700'}`}>
+                                    {selectedEmployee ? selectedEmployee.name : 'Выбрать специалиста'}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
