@@ -11,10 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BookingEditor } from '@/components/appointments/BookingEditor';
 
 const TIME_SLOTS_START = 8;
 const TIME_SLOTS_END = 22;
@@ -26,72 +23,10 @@ export default function AppointmentsPage() {
     const queryClient = useQueryClient();
 
     // Modal State
-    const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
     const [selectedSlot, setSelectedSlot] = useState<{ empID: number; time: DateTime } | null>(null);
     const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        selectedServices: [] as any[], // Array of service objects from employeeServices
-        startTime: '',
-        endTime: '',
-        clientName: '',
-        clientPhone: '',
-        comment: '',
-        status: 'pending',
-        totalPrice: 0,
-        payments: [] as any[], // Array of { method: string, amount: number }
-    });
-
-    const totalPaid = useMemo(() => {
-        return formData.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-    }, [formData.payments]);
-
-    // Search customer by phone
-    const { data: foundCustomer } = useQuery({
-        queryKey: ['customer-search', formData.clientPhone, selectedBranchID],
-        queryFn: async () => {
-            if (formData.clientPhone.length < 5) return null;
-            try {
-                const res = await api.get('/customers/by-phone', {
-                    params: { branch_id: selectedBranchID, phone: formData.clientPhone }
-                });
-                return res.data;
-            } catch (e) {
-                return null;
-            }
-        },
-        enabled: formData.clientPhone.length >= 5 && !!selectedBranchID,
-    });
-
-    // Auto-fill name if customer found (only if name is empty)
-    useEffect(() => {
-        if (foundCustomer && !formData.clientName) {
-            setFormData(prev => ({
-                ...prev,
-                clientName: `${foundCustomer.first_name} ${foundCustomer.last_name}`.trim(),
-            }));
-        }
-    }, [foundCustomer, formData.clientName]);
-
-    // Recalculate duration and price
-    useEffect(() => {
-        let totalDuration = 0;
-        let totalPrice = 0;
-        formData.selectedServices.forEach(s => {
-            totalDuration += s.duration_minutes || s.duration || 0;
-            totalPrice += s.price || 0;
-        });
-
-        if (formData.startTime) {
-            const start = DateTime.fromFormat(formData.startTime, 'HH:mm');
-            const end = start.plus({ minutes: totalDuration || 60 });
-            setFormData(prev => ({ 
-                ...prev, 
-                endTime: end.toFormat('HH:mm'),
-                totalPrice: totalPrice 
-            }));
-        }
-    }, [formData.selectedServices, formData.startTime]);
 
     // Fetch data...
     const { data: company } = useQuery({
@@ -204,37 +139,14 @@ export default function AppointmentsPage() {
 
     const createBookingMutation = useMutation({
         mutationFn: (data: any) => api.post('/bookings', data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['appointments'] });
-            toast.success('Запись создана');
-            setIsBookingModalOpen(false);
-            setFormData({ 
-                selectedServices: [], 
-                startTime: '', 
-                endTime: '', 
-                clientName: '', 
-                clientPhone: '', 
-                comment: '', 
-                status: 'pending',
-                totalPrice: 0,
-                payments: []
-            });
-        },
-        onError: (error: any) => {
-            toast.error('Ошибка создания записи: ' + (error.response?.data?.error || error.message));
-        }
+    });
+
+    const updateBookingMutation = useMutation({
+        mutationFn: ({ id, data }: { id: number, data: any }) => api.put(`/bookings/${id}`, data),
     });
 
     const updateStatusMutation = useMutation({
         mutationFn: ({ id, status }: { id: number, status: string }) => api.patch(`/appointments/${id}`, { status }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['appointments'] });
-            toast.success('Статус обновлен');
-            setIsEditModalOpen(false);
-        },
-        onError: (error: any) => {
-            toast.error('Ошибка обновления: ' + (error.response?.data?.error || error.message));
-        }
     });
 
     const timeSlots = useMemo(() => {
@@ -291,23 +203,13 @@ export default function AppointmentsPage() {
 
     const handleSlotClick = (empID: number, time: DateTime) => {
         setSelectedSlot({ empID, time });
-        setFormData({
-            ...formData,
-            startTime: time.toFormat('HH:mm'),
-            endTime: time.plus({ minutes: 60 }).toFormat('HH:mm'),
-        });
-        setIsBookingModalOpen(true);
+        setEditorMode('create');
+        setIsEditorOpen(true);
     };
 
-    const handleCreateBooking = async () => {
-        if (!selectedSlot || formData.selectedServices.length === 0 || !company?.id) {
-            toast.error('Выберите хотя бы одну услугу');
-            return;
-        }
-
+    const handleSaveBooking = async (editorData: any) => {
         try {
-            // 1. Create or Update Client
-            const [firstName, ...lastNameParts] = formData.clientName.split(' ');
+            const [firstName, ...lastNameParts] = editorData.clientName.split(' ');
             const lastName = lastNameParts.join(' ');
 
             const clientRes = await createCustomerMutation.mutateAsync({
@@ -315,42 +217,64 @@ export default function AppointmentsPage() {
                 branch_id: Number(selectedBranchID),
                 first_name: firstName,
                 last_name: lastName,
-                phone: formData.clientPhone,
+                phone: editorData.clientPhone,
+                email: editorData.clientEmail,
             });
 
-            // 2. Create Booking
-            const dateStr = currentDate.toFormat('yyyy-MM-dd');
-            const startISO = `${dateStr}T${formData.startTime}:00`;
-            const endISO = `${dateStr}T${formData.endTime}:00`;
+            const dateStr = editorMode === 'create' && selectedSlot 
+                ? currentDate.toFormat('yyyy-MM-dd') 
+                : selectedAppointment?.start_time.slice(0, 10);
 
-            await createBookingMutation.mutateAsync({
-                employee_id: selectedSlot.empID,
-                client_id: clientRes.data.id,
-                start_time: startISO,
-                end_time: endISO,
-                comment: formData.comment,
-                total_price: formData.totalPrice,
-                services: formData.selectedServices.map(s => ({
-                    service_id: s.service_id,
-                    price: s.price,
-                    duration_minutes: s.duration_minutes
-                }))
-            });
+            const startISO = `${dateStr}T${editorData.startTime}:00`;
+            const endISO = `${dateStr}T${editorData.endTime}:00`;
 
-            setFormData({ 
-                selectedServices: [], 
-                startTime: '', 
-                endTime: '', 
-                clientName: '', 
-                clientPhone: '', 
-                comment: '', 
-                status: 'pending',
-                totalPrice: 0,
-                payments: []
-            });
+            const servicesData = editorData.selectedServices.map((s: any) => ({
+                service_id: s.service_id || s.id,
+                price: s.price,
+                duration_minutes: s.duration_minutes || s.duration
+            }));
 
-        } catch (e) {
-            console.error(e);
+            if (editorMode === 'create' && selectedSlot) {
+                await createBookingMutation.mutateAsync({
+                    employee_id: selectedSlot.empID,
+                    client_id: clientRes.data.id,
+                    start_time: startISO,
+                    end_time: endISO,
+                    comment: editorData.comment,
+                    total_price: editorData.totalPrice,
+                    services: servicesData
+                });
+                toast.success('Запись создана');
+            } else if (editorMode === 'edit' && selectedAppointment) {
+                await updateBookingMutation.mutateAsync({
+                    id: selectedAppointment.id,
+                    data: {
+                        employee_id: selectedAppointment.employee_id,
+                        client_id: selectedAppointment.client_id,
+                        start_time: startISO,
+                        end_time: endISO,
+                        comment: editorData.comment,
+                        total_price: editorData.totalPrice,
+                        services: servicesData,
+                        payments: editorData.payments.map((p: any) => ({
+                            amount: Number(p.amount),
+                            method: p.method
+                        }))
+                    }
+                });
+
+                if (editorData.status !== selectedAppointment.status) {
+                    await updateStatusMutation.mutateAsync({ id: selectedAppointment.id, status: editorData.status });
+                }
+                toast.success('Запись обновлена');
+            }
+
+            queryClient.invalidateQueries({ queryKey: ['appointments'] });
+            setIsEditorOpen(false);
+
+        } catch (error: any) {
+            console.error(error);
+            toast.error('Ошибка сохранения записи: ' + (error.response?.data?.error || error.message));
         }
     };
 
@@ -473,20 +397,8 @@ export default function AppointmentsPage() {
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setSelectedAppointment(app);
-                                                    const customer = customerMap[app.client_id];
-                                                    setFormData({
-                                                        ...formData,
-                                                        status: app.status,
-                                                        comment: app.comment || '',
-                                                        clientName: app.client_phone !== 'ANONYMOUS' ? (app.client_first_name ? `${app.client_first_name} ${app.client_last_name}`.trim() : (customer ? `${customer.first_name} ${customer.last_name}`.trim() : '')) : 'Клиент',
-                                                        clientPhone: app.client_phone !== 'ANONYMOUS' ? (app.client_phone || customer?.phone || '') : '',
-                                                        startTime: formatTimeRaw(app.start_time),
-                                                        endTime: formatTimeRaw(app.end_time),
-                                                        selectedServices: app.services || [],
-                                                        payments: app.payments || [],
-                                                        totalPrice: app.total_price || 0
-                                                    });
-                                                    setIsEditModalOpen(true);
+                                                    setEditorMode('edit');
+                                                    setIsEditorOpen(true);
                                                 }}
                                             >
                                                 {/* ИЗМЕНЕНО: выводим время без конвертации timezone */}
@@ -509,379 +421,21 @@ export default function AppointmentsPage() {
                 </div>
             </div>
 
-            {/* Create Booking Modal */}
-            <Dialog open={isBookingModalOpen} onOpenChange={setIsBookingModalOpen}>
-                <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Новая запись</DialogTitle>
-                        <DialogDescription>
-                            Заполните данные для создания записи.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-start gap-4">
-                            <Label htmlFor="service" className="text-right mt-2">Услуги</Label>
-                            <div className="col-span-3 space-y-2">
-                                <Select
-                                    onValueChange={(val) => {
-                                        const es = employeeServices?.find((s: any) => s.service_id.toString() === val);
-                                        if (es && !formData.selectedServices.find(s => s.service_id.toString() === val)) {
-                                            setFormData(prev => ({ 
-                                                ...prev, 
-                                                selectedServices: [...prev.selectedServices, es] 
-                                            }));
-                                        }
-                                    }}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Добавить услугу" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {employeeServices?.map((es: any) => (
-                                            <SelectItem key={es.service_id} value={es.service_id.toString()}>
-                                                {es.service.name} ({es.duration_minutes} мин) - {es.price} BYN
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <div className="flex flex-wrap gap-2">
-                                    {formData.selectedServices.map(s => (
-                                        <Badge key={s.service_id} variant="secondary" className="gap-1 pr-1 py-1">
-                                            {s.service?.name || serviceMap[s.service_id] || 'Услуга'}
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="h-4 w-4 rounded-full" 
-                                                onClick={() => setFormData(prev => ({
-                                                    ...prev,
-                                                    selectedServices: prev.selectedServices.filter(item => item.service_id !== s.service_id)
-                                                }))}
-                                            >
-                                                <span className="text-[10px]">×</span>
-                                            </Button>
-                                        </Badge>
-                                    ))}
-                                </div>
-                                {formData.totalPrice > 0 && (
-                                    <div className="text-xs font-bold text-neutral-500">
-                                        Итого: {formData.totalPrice} BYN
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="time" className="text-right">Время</Label>
-                            <div className="col-span-3 flex items-center gap-2">
-                                <Input
-                                    type="time"
-                                    value={formData.startTime}
-                                    onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                />
-                                <span>-</span>
-                                <Input
-                                    type="time"
-                                    value={formData.endTime}
-                                    onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right">Имя</Label>
-                            <Input
-                                id="name"
-                                value={formData.clientName}
-                                onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                                placeholder="Иван Иванов"
-                                className="col-span-3"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="phone" className="text-right">Телефон</Label>
-                            <Input
-                                id="phone"
-                                value={formData.clientPhone}
-                                onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
-                                placeholder="+375..."
-                                className="col-span-3"
-                            />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="comment" className="text-right">Комментарий</Label>
-                            <Input
-                                id="comment"
-                                value={formData.comment}
-                                onChange={(e) => setFormData({ ...formData, comment: e.target.value })}
-                                placeholder="Комментарий к записи"
-                                className="col-span-3"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsBookingModalOpen(false)}>Отмена</Button>
-                        <Button
-                            onClick={handleCreateBooking}
-                            disabled={createCustomerMutation.isPending || createBookingMutation.isPending || formData.selectedServices.length === 0}
-                        >
-                            {(createCustomerMutation.isPending || createBookingMutation.isPending) ? 'Создание...' : 'Создать запись'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Edit Booking Modal */}
-            <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-                <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                        <DialogTitle>Редактирование записи</DialogTitle>
-                        <DialogDescription>
-                            Изменение статуса и деталей записи.
-                        </DialogDescription>
-                    </DialogHeader>
-                     {selectedAppointment && (
-                        <div className="grid gap-4 py-4">
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Имя</Label>
-                                <Input
-                                    value={formData.clientName}
-                                    onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Телефон</Label>
-                                <Input
-                                    value={formData.clientPhone}
-                                    onChange={(e) => setFormData({ ...formData, clientPhone: e.target.value })}
-                                    className="col-span-3"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right mt-2">Услуги</Label>
-                                <div className="col-span-3 space-y-2">
-                                    <Select
-                                        onValueChange={(val) => {
-                                            const es = allServices?.find((s: any) => s.id.toString() === val);
-                                            if (es && !formData.selectedServices.find(s => s.service_id?.toString() === val || s.id?.toString() === val)) {
-                                                // Convert to AppointmentService format
-                                                const newS = {
-                                                    service_id: es.id,
-                                                    price: es.price,
-                                                    duration_minutes: es.duration_minutes,
-                                                    service: es // for display
-                                                };
-                                                setFormData(prev => ({ 
-                                                    ...prev, 
-                                                    selectedServices: [...prev.selectedServices, newS] 
-                                                }));
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Добавить услугу" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {allServices?.map((s: any) => (
-                                                <SelectItem key={s.id} value={s.id.toString()}>
-                                                    {s.name} ({s.duration_minutes} мин) - {s.price} BYN
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <div className="flex flex-wrap gap-2">
-                                        {formData.selectedServices.map((s, idx) => (
-                                            <Badge key={idx} variant="secondary" className="gap-1 pr-1 py-1">
-                                                {s.service?.name || serviceMap[s.service_id]}
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
-                                                    className="h-4 w-4 rounded-full" 
-                                                    onClick={() => setFormData(prev => ({
-                                                        ...prev,
-                                                        selectedServices: prev.selectedServices.filter((_, i) => i !== idx)
-                                                    }))}
-                                                >
-                                                    <span className="text-[10px]">×</span>
-                                                </Button>
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                    <div className="text-xs font-bold text-neutral-500">
-                                        Итого: {formData.totalPrice} BYN
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Время</Label>
-                                <div className="col-span-3 flex items-center gap-2">
-                                    <Input
-                                        type="time"
-                                        value={formData.startTime}
-                                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                                    />
-                                    <span>-</span>
-                                    <Input
-                                        type="time"
-                                        value={formData.endTime}
-                                        readOnly
-                                        className="bg-neutral-50"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-4 items-start gap-4">
-                                <Label className="text-right mt-2">Оплата</Label>
-                                <div className="col-span-3 space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Select 
-                                            onValueChange={(val) => {
-                                                const remaining = formData.totalPrice - totalPaid;
-                                                if (remaining > 0) {
-                                                    setFormData(prev => ({
-                                                        ...prev,
-                                                        payments: [...prev.payments, { method: val, amount: remaining }]
-                                                    }));
-                                                } else {
-                                                    setFormData(prev => ({
-                                                        ...prev,
-                                                        payments: [...prev.payments, { method: val, amount: 0 }]
-                                                    }));
-                                                }
-                                            }}
-                                        >
-                                            <SelectTrigger className="h-8">
-                                                <SelectValue placeholder="Добавить платеж" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="cash">Наличные</SelectItem>
-                                                <SelectItem value="card">Карта</SelectItem>
-                                                <SelectItem value="other">Другое (Сертификат...)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {formData.payments.map((p, idx) => (
-                                        <div key={idx} className="flex items-center gap-2">
-                                            <Badge variant="outline" className="w-24 justify-center">
-                                                {p.method === 'cash' ? 'Нал' : p.method === 'card' ? 'Безнал' : 'Другое'}
-                                            </Badge>
-                                            <Input 
-                                                type="number" 
-                                                value={p.amount} 
-                                                onChange={(e) => {
-                                                    const newPayments = [...formData.payments];
-                                                    newPayments[idx].amount = parseFloat(e.target.value) || 0;
-                                                    setFormData({ ...formData, payments: newPayments });
-                                                }}
-                                                className="h-8 w-24 text-right font-bold"
-                                            />
-                                            <Button 
-                                                variant="ghost" 
-                                                size="icon" 
-                                                className="h-6 w-6 text-neutral-400"
-                                                onClick={() => {
-                                                    setFormData({
-                                                        ...formData,
-                                                        payments: formData.payments.filter((_, i) => i !== idx)
-                                                    });
-                                                }}
-                                            >
-                                                ×
-                                            </Button>
-                                        </div>
-                                    ))}
-
-                                    <div className="flex items-center justify-between pt-1 border-t border-neutral-100 text-xs">
-                                        <span className="text-neutral-500 font-medium">Оплачено: {totalPaid} / {formData.totalPrice} BYN</span>
-                                        {formData.totalPrice - totalPaid > 0 && (
-                                            <span className="text-red-500 font-bold">Остаток: {formData.totalPrice - totalPaid} BYN</span>
-                                        )}
-                                        {formData.totalPrice - totalPaid <= 0 && totalPaid > 0 && (
-                                            <span className="text-green-600 font-bold">Оплачено полностью</span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                             <div className="grid grid-cols-4 items-center gap-4">
-                                <Label className="text-right">Статус</Label>
-                                <div className="col-span-3">
-                                    <Select
-                                        value={formData.status}
-                                        onValueChange={(val) => setFormData({ ...formData, status: val })}
-                                    >
-                                        <SelectTrigger suppressHydrationWarning>
-                                            <SelectValue placeholder="Статус" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="pending">Ожидание</SelectItem>
-                                            <SelectItem value="confirmed">Подтверждено</SelectItem>
-                                            <SelectItem value="arrived">Пришел</SelectItem>
-                                            <SelectItem value="no_show">Не пришел</SelectItem>
-                                            <SelectItem value="cancelled">Отменено</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                        </div>
-                     )}
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Закрыть</Button>
-                        <Button 
-                            onClick={async () => {
-                                // 1. Update Customer info first
-                                const [firstName, ...lastNameParts] = formData.clientName.split(' ');
-                                const lastName = lastNameParts.join(' ');
-                                await createCustomerMutation.mutateAsync({
-                                    company_id: company.id,
-                                    branch_id: Number(selectedBranchID),
-                                    first_name: firstName,
-                                    last_name: lastName,
-                                    phone: formData.clientPhone,
-                                });
-
-                                // 2. Update Appointment
-                                const dateStr = selectedAppointment.start_time.slice(0, 10); // "YYYY-MM-DD"
-                                const startISO = `${dateStr}T${formData.startTime}:00`;
-                                const endISO = `${dateStr}T${formData.endTime}:00`;
-
-                                await api.put(`/bookings/${selectedAppointment.id}`, {
-                                    employee_id: selectedAppointment.employee_id,
-                                    client_id: selectedAppointment.client_id,
-                                    start_time: startISO,
-                                    end_time: endISO,
-                                    comment: formData.comment,
-                                    total_price: formData.totalPrice,
-                                    services: formData.selectedServices.map(s => ({
-                                        service_id: s.service_id || s.id,
-                                        price: s.price,
-                                        duration_minutes: s.duration_minutes || s.duration
-                                    })),
-                                    payments: formData.payments.map(p => ({
-                                        amount: Number(p.amount),
-                                        method: p.method
-                                    }))
-                                });
-
-                                // 3. Update status if changed
-                                if (formData.status !== selectedAppointment.status) {
-                                    await updateStatusMutation.mutateAsync({ id: selectedAppointment.id, status: formData.status });
-                                }
-
-                                queryClient.invalidateQueries({ queryKey: ['appointments'] });
-                                setIsEditModalOpen(false);
-                                toast.success('Запись обновлена');
-                            }}
-                            disabled={updateStatusMutation.isPending}
-                        >
-                            {updateStatusMutation.isPending ? 'Сохранение...' : 'Сохранить'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <BookingEditor
+                isOpen={isEditorOpen}
+                onClose={() => setIsEditorOpen(false)}
+                mode={editorMode}
+                company={company}
+                branchId={Number(selectedBranchID)}
+                selectedSlot={selectedSlot}
+                selectedAppointment={selectedAppointment}
+                employees={employees || []}
+                allServices={allServices || []}
+                employeeServices={employeeServices || []}
+                customers={customers || []}
+                onSave={handleSaveBooking}
+                isSaving={createBookingMutation.isPending || updateBookingMutation.isPending || createCustomerMutation.isPending}
+            />
 
             <style jsx global>{`
                 .diagonal-stripes {

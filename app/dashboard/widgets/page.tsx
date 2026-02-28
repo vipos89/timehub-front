@@ -198,6 +198,7 @@ export default function WidgetsPage() {
             analyticsCode: settings.analyticsCode || '',
             buttonAnimation: settings.buttonAnimation !== false,
             buttonText: settings.buttonText || 'Записаться онлайн',
+            buttonTextColor: settings.buttonTextColor || '#111827',
             animationType: settings.animationType || 'th-pulse',
             buttonPosition: settings.buttonPosition || 'bottom-right'
         });
