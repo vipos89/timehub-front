@@ -5,636 +5,390 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueries } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Calendar as CalendarIcon, Clock, User, Scissors, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { 
+    Calendar as CalendarIcon, 
+    Clock, 
+    User, 
+    Scissors, 
+    CheckCircle2, 
+    ChevronRight, 
+    ChevronLeft,
+    Instagram,
+    Send,
+    Globe,
+    Smartphone,
+    ArrowLeft,
+    Info,
+    Users,
+    AlertCircle,
+    Check,
+    Phone,
+    Star
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { DateTime } from 'luxon';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar } from '@/components/ui/calendar';
+import { Card, CardContent } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
-
 
 export default function WidgetPage() {
     const { code } = useParams();
     const searchParams = useSearchParams();
-    const [view, setView] = useState<'home' | 'specialist' | 'services' | 'datetime' | 'profile' | 'branches'>('home');
+    
+    // -- 1. STATE --
+    const [view, setView] = useState<'home' | 'specialist' | 'services' | 'datetime' | 'profile' | 'success'>('home');
+    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+    const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+    const [selectedServices, setSelectedServices] = useState<any[]>([]);
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [selectedSlot, setSelectedSlot] = useState<any>(null);
+    const [clientData, setClientData] = useState({ name: '', phone: '', comment: '' });
 
-    // Widget Config State
+    // -- 2. DATA QUERIES --
+    
     const { data: widget, isLoading: isLoadingWidget } = useQuery({
         queryKey: ['widget', code],
-        queryFn: async () => {
-            const res = await api.get(`/widgets/${code}`);
-            return res.data;
-        },
-        enabled: !!code,
+        queryFn: async () => (await api.get(`/widgets/${code}`)).data,
+        enabled: !!code
     });
 
     const settings = useMemo(() => {
-        if (!widget?.settings) return {};
-        try { return JSON.parse(widget.settings); } catch (e) { return {}; }
+        if (!widget?.settings) return { stepOrder: ['services', 'specialist', 'datetime'] };
+        const s = typeof widget.settings === 'string' ? JSON.parse(widget.settings) : widget.settings;
+        return { stepOrder: ['services', 'specialist', 'datetime'], ...s };
     }, [widget?.settings]);
 
-    // Selection state
-    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
-    const [selectedServices, setSelectedServices] = useState<any[]>([]);
-    const [selectedEmployee, setSelectedEmployee] = useState<any>(null); // null means "Any"
-    const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-    const [selectedSlot, setSelectedSlot] = useState<any>(null);
-
-    // Guest state
-    const [guestName, setGuestName] = useState('');
-    const [guestPhone, setGuestPhone] = useState('');
-
-    // Theme settings from Widget Settings or URL (fallback)
-    const accentColor = settings.accentColor || searchParams.get('accent') || '#000000';
-    const bgColor = settings.bgColor || searchParams.get('bg') || '#ffffff';
-    const stepsOrder = settings.stepsOrder || ['services', 'specialist', 'datetime'];
-
-    // Analytics execution
-    useEffect(() => {
-        if (settings.analyticsCode) {
-            try {
-                const script = document.createElement('script');
-                script.innerHTML = settings.analyticsCode;
-                document.head.appendChild(script);
-            } catch (e) {
-                console.error('Failed to execute analytics code', e);
-            }
-        }
-    }, [settings.analyticsCode]);
-
-    // Set initial state based on widget type
     const activeBranchId = selectedBranchId || widget?.branch_id;
-    const isNetworkWidget = widget?.widget_type === 'network';
 
-    // Navigation logic based on steps order
-    const handleNextStep = (currentStep: string) => {
-        const currentIndex = stepsOrder.indexOf(currentStep);
-        if (currentIndex !== -1 && currentIndex < stepsOrder.length - 1) {
-            const nextStep = stepsOrder[currentIndex + 1];
-            
-            // Skip specialist if it's a master widget and next step is specialist
-            if (nextStep === 'specialist' && widget?.widget_type === 'master') {
-                handleNextStep('specialist');
-                return;
-            }
-
-            setView(nextStep as any);
-        } else {
-            setView('home'); // Fallback to summary
-        }
-    };
-
-    // Queries
-    const { data: allBranches } = useQuery({
-        queryKey: ['companyBranches', widget?.company_id],
-        queryFn: async () => {
-            const res = await api.get(`/companies/${widget.company_id}/branches`);
-            return res.data;
-        },
-        enabled: !!widget?.company_id && isNetworkWidget,
+    const { data: company } = useQuery({
+        queryKey: ['company', widget?.company_id],
+        queryFn: async () => (await api.get(`/companies/${widget.company_id}`)).data,
+        enabled: !!widget?.company_id
     });
 
     const { data: branch } = useQuery({
         queryKey: ['branch', activeBranchId],
-        queryFn: async () => {
-            const res = await api.get(`/branches/${activeBranchId}`);
-            return res.data;
-        },
-        enabled: !!activeBranchId,
+        queryFn: async () => (await api.get(`/branches/${activeBranchId}`)).data,
+        enabled: !!activeBranchId
     });
 
-    const { data: categories } = useQuery({
-        queryKey: ['categories', activeBranchId],
-        queryFn: async () => {
-            const res = await api.get(`/branches/${activeBranchId}/categories`);
-            return res.data;
-        },
-        enabled: !!activeBranchId,
-    });
-
-    const { data: allServices } = useQuery({
+    const { data: allServices = [] } = useQuery({
         queryKey: ['services', activeBranchId],
-        queryFn: async () => {
-            const res = await api.get(`/branches/${activeBranchId}/services`);
-            return res.data;
-        },
-        enabled: !!activeBranchId,
+        queryFn: async () => (await api.get(`/branches/${activeBranchId}/services`)).data,
+        enabled: !!activeBranchId
     });
 
-    const { data: employees } = useQuery({
+    const { data: categories = [] } = useQuery({
+        queryKey: ['categories', activeBranchId],
+        queryFn: async () => (await api.get(`/branches/${activeBranchId}/categories`)).data,
+        enabled: !!activeBranchId
+    });
+
+    const { data: employees = [] } = useQuery({
         queryKey: ['employees', activeBranchId],
-        queryFn: async () => {
-            const res = await api.get(`/employees?branch_id=${activeBranchId}`);
-            return res.data;
-        },
-        enabled: !!activeBranchId,
+        queryFn: async () => (await api.get(`/employees?branch_id=${activeBranchId}`)).data,
+        enabled: !!activeBranchId
     });
 
-    // Effects to initialize state based on widget
-    useEffect(() => {
-        if (widget) {
-            if (widget.widget_type === 'network' && !selectedBranchId) {
-                // If network has only one branch, auto-select it
-                if (allBranches && allBranches.length === 1) {
-                    setSelectedBranchId(allBranches[0].id);
-                    setView('home');
-                } else {
-                    setView('branches');
-                }
-            } else if (widget.widget_type === 'branch' && widget.branch_id) {
-                setSelectedBranchId(widget.branch_id);
-                setView('home');
-            } else if (widget.widget_type === 'master' && widget.employee_id) {
-                setSelectedBranchId(widget.branch_id);
-                setView('home');
-            }
-        }
-    }, [widget, allBranches, selectedBranchId]);
+    const getEmployeeServiceDuration = (svc: any, empId: number) => {
+        const empSvc = svc.employees?.find((e: any) => e.employee_id === empId);
+        return empSvc?.duration_minutes || svc.duration_minutes || svc.duration || 0;
+    };
 
-    // Auto-select master if it's a master widget
-    useEffect(() => {
-        if (widget?.widget_type === 'master' && widget.employee_id && employees && !selectedEmployee) {
-            const emp = employees.find((e: any) => e.id === widget.employee_id);
-            if (emp) setSelectedEmployee(emp);
-        }
-    }, [widget, employees, selectedEmployee]);
+    const getEmployeeServicePrice = (svc: any, empId: number) => {
+        const empSvc = svc.employees?.find((e: any) => e.employee_id === empId);
+        return empSvc?.price || svc.price || 0;
+    };
 
-    // Group services (Categorized vs Uncategorized)
-    const groupedServices = useMemo(() => {
-        if (!allServices) return [];
+    const totalDuration = useMemo(() => {
+        if (selectedServices.length === 0) return 30; // default for empty state
+
+        // If a specific employee is selected, use their exact durations
+        if (selectedEmployee) {
+            return selectedServices.reduce((sum, s) => sum + getEmployeeServiceDuration(s, selectedEmployee.id), 0);
+        }
+
+        // Otherwise, find the minimum duration among all eligible employees to ensure we fetch enough granular slots
+        const minDurations = selectedServices.map(s => {
+            let minDur = s.duration_minutes || s.duration || 9999;
+            s.employees?.forEach((e: any) => {
+                if (e.duration_minutes && e.duration_minutes < minDur) minDur = e.duration_minutes;
+            });
+            return minDur === 9999 ? 30 : minDur;
+        });
+
+        return minDurations.reduce((sum, dur) => sum + dur, 0) || 30;
+    }, [selectedServices, selectedEmployee]);
+
+    // -- 3. REACTIVE FILTERS (The Engine) --
+
+    const eligibleEmployees = useMemo(() => {
+        return employees.filter((emp: any) => {
+            if (selectedServices.length === 0) return true;
+            return selectedServices.every(svc => 
+                svc.employees?.some((e: any) => e.employee_id === emp.id)
+            );
+        });
+    }, [employees, selectedServices]);
+
+    const activeEmployeeIds = useMemo(() => {
+        if (selectedEmployee) return String(selectedEmployee.id);
+        return eligibleEmployees.map((e: any) => e.id).join(',');
+    }, [selectedEmployee, eligibleEmployees]);
+
+    // NEW: Calendar Mask Query
+    const { data: availableDates = [] } = useQuery({
+        queryKey: ['available-dates', activeBranchId, activeEmployeeIds, totalDuration],
+        queryFn: async () => {
+            if (!activeEmployeeIds && employees.length === 0) return [];
+            const start = DateTime.now().toISODate();
+            const end = DateTime.now().plus({ months: 2 }).toISODate();
+            const res = await api.get(`/available-dates?branch_id=${activeBranchId}&employee_ids=${activeEmployeeIds}&duration=${totalDuration || 30}&start=${start}&end=${end}`);
+            return res.data ? res.data.map((d: string) => d.split('T')[0]) : [];
+        },
+        enabled: !!activeBranchId && employees.length > 0
+    });
+
+    // NEW: Slots query (Unified)
+    const { data: availableSlots = [], isLoading: isLoadingSlots } = useQuery({
+        queryKey: ['slots', activeEmployeeIds, selectedDate, totalDuration],
+        queryFn: async () => {
+            if (!selectedDate || !activeEmployeeIds) return [];
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const res = await api.get(`/slots?employee_ids=${activeEmployeeIds}&date=${dateStr}&duration=${totalDuration || 30}`);
+            return (res.data || []).map((slot: any) => ({
+                ...slot,
+                start_time: slot.start_time.replace('Z', ''),
+                end_time: slot.end_time.replace('Z', ''),
+            }));
+        },
+        enabled: !!activeBranchId && !!selectedDate && !!activeEmployeeIds
+    });
+
+    // -- 3. REACTIVE FILTERS (The Engine) --
+
+    const isEmployeeCompatible = (emp: any) => {
+        // 1. Service compatibility
+        const providesServices = selectedServices.length === 0 || selectedServices.every(svc => 
+            svc.employees?.some((e: any) => e.employee_id === emp.id)
+        );
+        if (!providesServices) return false;
+
+        // 2. Schedule compatibility
+        if (selectedSlot) {
+            const hasExactSlot = availableSlots.some((slot: any) => 
+                slot.employee_id === emp.id && 
+                slot.start_time === selectedSlot.start_time && 
+                (slot.max_duration || 0) >= totalDuration
+            );
+            if (!hasExactSlot) return false;
+        } else if (selectedDate && availableSlots.length > 0) {
+            const hasAnySlot = availableSlots.some((slot: any) => slot.employee_id === emp.id);
+            if (!hasAnySlot) return false;
+        } else if (selectedDate && !isLoadingSlots && availableSlots.length === 0) {
+            return false;
+        }
+
+        return true;
+    };
+
+    const isServiceCompatible = (svc: any) => {
+        // 1. Employee compatibility
+        if (selectedEmployee) {
+            const provides = svc.employees?.some((e: any) => e.employee_id === selectedEmployee.id);
+            if (!provides) return false;
+        }
+
+        const isSelected = selectedServices.some(s => s.id === svc.id);
         
+        // Use employee-specific duration if selected, else base/minimum duration logic
+        const svcDuration = selectedEmployee 
+            ? getEmployeeServiceDuration(svc, selectedEmployee.id)
+            : (svc.duration_minutes || svc.duration || 0);
+
+        const newDuration = isSelected ? totalDuration - svcDuration : totalDuration + svcDuration;
+
+        // 2. Schedule compatibility (if Date/Slot locked in)
+        if (selectedSlot) {
+            const max = selectedSlot.max_duration || 0;
+            if (newDuration > max) return false;
+        } else if (selectedDate && !isLoadingSlots && availableSlots.length > 0) {
+            const canAccommodate = availableSlots.some((s: any) => (s.max_duration || 0) >= newDuration);
+            if (!canAccommodate) return false;
+        } else if (selectedDate && !isLoadingSlots && availableSlots.length === 0) {
+            return false;
+        }
+
+        return true;
+    };
+
+    const isDateCompatible = (date: Date) => {
+        const dStr = format(date, 'yyyy-MM-dd');
+        return availableDates.includes(dStr);
+    };
+
+    const filteredEmployees = useMemo(() => employees.filter(isEmployeeCompatible), [employees, selectedServices]);
+    const filteredServices = useMemo(() => allServices.filter(isServiceCompatible), [allServices, selectedEmployee]);
+
+    const groupedServices = useMemo(() => {
         const groups: any[] = [];
-        const categorizedServiceIds = new Set();
-
-        // 1. Process explicit categories
-        if (categories) {
-            categories.forEach((cat: any) => {
-                if (cat.services && cat.services.length > 0) {
-                    groups.push({
-                        id: cat.id,
-                        name: cat.name,
-                        services: cat.services
-                    });
-                    cat.services.forEach((s: any) => categorizedServiceIds.add(s.id));
-                }
-            });
-        }
-
-        // 2. Process uncategorized services
-        const uncategorized = allServices.filter((s: any) => !categorizedServiceIds.has(s.id));
-        if (uncategorized.length > 0) {
-            groups.push({
-                id: 'other',
-                name: 'Услуги',
-                services: uncategorized
-            });
-        }
-
+        const catIds = new Set();
+        categories.forEach((cat: any) => {
+            const svcs = (cat.services || []).filter((s: any) => allServices.some((as: any) => as.id === s.id));
+            if (svcs.length > 0) {
+                groups.push({ id: cat.id, name: cat.name, services: svcs });
+                svcs.forEach((s: any) => catIds.add(s.id));
+            }
+        });
+        const other = allServices.filter((s: any) => !catIds.has(s.id));
+        if (other.length > 0) groups.push({ id: 'other', name: 'Услуги', services: other });
         return groups;
     }, [categories, allServices]);
 
-    const totalDuration = useMemo(() => {
-        return selectedServices.reduce((sum, s) => sum + (s.duration_minutes || s.duration || 0), 0);
-    }, [selectedServices]);
+    // -- 4. HANDLERS --
 
-    const totalPrice = useMemo(() => {
-        return selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
-    }, [selectedServices]);
-
-    const isEmployeeCompatible = (emp: any) => {
-        if (selectedServices.length === 0) return true;
-        
-        // Check if the employee provides ALL selected services
-        // Based on service.employees relation fetched in groupedServices data
-        return selectedServices.every(svc => 
-            svc.employees?.some((e: any) => e.employee_id === emp.id)
-        );
+    const handleSelectSpecialist = (emp: any) => { 
+        setSelectedEmployee(emp); 
+        setView('home'); 
     };
 
-    // Query for slots of a specific employee
-    const { data: specificEmployeeSlots, isLoading: isLoadingSpecificSlots } = useQuery({
-        queryKey: ['slots', selectedEmployee?.id, selectedDate],
-        queryFn: async () => {
-            if (!selectedEmployee?.id) return [];
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
-            const res = await api.get(`/slots?employee_id=${selectedEmployee.id}&date=${dateStr}&service_id=${selectedServices[0]?.id || 0}`);
-            return res.data?.map((s: any) => ({
-                ...s,
-                start_time: s.start_time.replace('Z', ''),
-                end_time: s.end_time.replace('Z', '')
-            })) || [];
-        },
-        enabled: !!selectedEmployee?.id && !!selectedDate,
-    });
+    const handleSelectService = (svc: any) => {
+        const isSelected = selectedServices.some(s => s.id === svc.id);
+        const newSelection = isSelected 
+            ? selectedServices.filter(s => s.id !== svc.id) 
+            : [...selectedServices, svc];
+        
+        setSelectedServices(newSelection);
+    };
 
-    // Query for slots of ALL employees (for "Any" mode)
-    // Only query slots for employees that provide the selected services
-    const compatibleEmployees = (employees || []).filter((emp: any) => isEmployeeCompatible(emp));
-    const allEmployeeSlotQueries = useQueries({
-        queries: compatibleEmployees.map((emp: any) => ({
-            queryKey: ['slots', emp.id, selectedDate],
-            queryFn: async () => {
-                const dateStr = format(selectedDate, 'yyyy-MM-dd');
-                const res = await api.get(`/slots?employee_id=${emp.id}&date=${dateStr}&service_id=${selectedServices[0]?.id || 0}`);
-                return res.data?.map((s: any) => ({
-                    ...s,
-                    start_time: s.start_time.replace('Z', ''),
-                    end_time: s.end_time.replace('Z', ''),
-                    employee_id: emp.id // Inject employee_id here so we know who provides this slot!
-                })) || [];
-            },
-            enabled: !selectedEmployee?.id && !!selectedDate && !!employees,
-        })),
-    });
+    const handleSelectSlot = (slot: any) => { setSelectedSlot(slot); setView('home'); };
 
-    const isLoadingAggregatedSlots = allEmployeeSlotQueries.some(q => q.isLoading);
-    const isLoadingSlots = isLoadingSpecificSlots || isLoadingAggregatedSlots;
-
-    // Duration-aware slot filtering and aggregation
-    const availableSlots = useMemo(() => {
-        const slotDuration = 30; // Assuming 30 min slots from backend
-        const neededSlots = Math.ceil((totalDuration || 30) / slotDuration);
-
-        // 1. Determine which raw slot lists to use
-        let rawSlotLists: any[][] = [];
-        if (selectedEmployee) {
-            if (specificEmployeeSlots) rawSlotLists = [specificEmployeeSlots];
-        } else if (allEmployeeSlotQueries.length > 0) {
-            rawSlotLists = allEmployeeSlotQueries
-                .map(q => q.data as any[])
-                .filter(data => !!data && data.length > 0);
-        }
-
-        if (rawSlotLists.length === 0) return [];
-
-        // 2. Process each employee's slots
-        const processedPerEmployee = rawSlotLists.map(slots => {
-            const filtered: any[] = [];
-            for (let i = 0; i <= slots.length - neededSlots; i++) {
-                let possible = true;
-                for (let j = 0; j < neededSlots; j++) {
-                    if (!slots[i + j].is_free) {
-                        possible = false;
-                        break;
-                    }
-                }
-                if (possible) {
-                    filtered.push({
-                        ...slots[i],
-                        end_time: slots[i + neededSlots - 1].end_time,
-                        employee_id: slots[i].employee_id || selectedEmployee?.id // Keep track of who provides it
-                    });
-                }
-            }
-            return filtered;
-        });
-
-        // 3. Aggregate: a slot (starting at time T) is available if AT LEAST ONE employee has it
-        const aggregatedMap = new Map<string, any>();
-        processedPerEmployee.forEach(empSlots => {
-            empSlots.forEach(slot => {
-                const timeKey = slot.start_time;
-                // If we don't have this time, or if we want to potentially track MULTIPLE employees for a slot,
-                // we'll just keep the first one we find for now (as the user just needs any specialist).
-                if (!aggregatedMap.has(timeKey)) {
-                    aggregatedMap.set(timeKey, slot);
-                }
-            });
-        });
-
-        return Array.from(aggregatedMap.values()).sort((a, b) => 
-            new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-        );
-    }, [specificEmployeeSlots, allEmployeeSlotQueries, totalDuration, selectedEmployee]);
-
-    // Mutations
     const bookingMutation = useMutation({
         mutationFn: (data: any) => api.post('/bookings', data),
-        onSuccess: () => {
-            setView('success' as any);
-            toast.success('Запись успешно создана!');
-            if (window.parent) {
-                window.parent.postMessage({ type: 'booking_success', branchId: activeBranchId }, '*');
-            }
-        },
-        onError: (err: any) => {
-            toast.error(err.response?.data?.error || 'Ошибка при бронировании');
-        },
+        onSuccess: () => setView('success'),
+        onError: () => toast.error('Ошибка при бронировании')
     });
 
-    const createCustomerMutation = useMutation({
-        mutationFn: (data: any) => api.post('/customers', data),
-    });
-
-    const handleBooking = async () => {
-        if (!guestName || !guestPhone) {
-            toast.error('Пожалуйста, заполните имя и телефон');
-            return;
-        }
+    const handleFinalBooking = async () => {
+        if (!clientData.name || !clientData.phone || !selectedSlot) return;
+        const empId = selectedEmployee?.id || selectedSlot.employee_id;
+        
+        // Calculate the exact end time based on the employee's specific duration
+        // Strip the Z/timezone to parse as local exact string without offset shifts
+        const formattedStartTime = selectedSlot.start_time.slice(0, 19);
+        const exactDuration = selectedServices.reduce((sum, s) => sum + getEmployeeServiceDuration(s, empId), 0) || 30;
+        const exactEndTime = DateTime.fromISO(formattedStartTime).plus({ minutes: exactDuration }).toFormat("yyyy-MM-dd'T'HH:mm:ss");
 
         try {
-            const customerRes = await createCustomerMutation.mutateAsync({
-                first_name: guestName,
-                phone: guestPhone,
-                branch_id: Number(activeBranchId),
-                email: '', 
-            });
-
-            // If no specialist was selected ("Any"), we must assign one that fits the slot
-            let finalEmployeeId = selectedEmployee?.id;
-            if (!finalEmployeeId && selectedSlot) {
-                // Find who provides the current slot
-                finalEmployeeId = selectedSlot.employee_id;
-            }
-
-            if (!finalEmployeeId) {
-                toast.error('Не удалось определить специалиста для выбранного времени');
-                return;
-            }
-
+            const customerRes = await api.post('/customers', { company_id: widget.company_id, branch_id: activeBranchId, first_name: clientData.name, phone: clientData.phone });
             bookingMutation.mutate({
-                company_id: Number(branch.company_id),
-                employee_id: finalEmployeeId,
-                start_time: format(new Date(selectedSlot.start_time), "yyyy-MM-dd'T'HH:mm:ss"),
-                end_time: format(new Date(selectedSlot.end_time), "yyyy-MM-dd'T'HH:mm:ss"),
+                company_id: widget.company_id,
+                employee_id: empId,
+                start_time: formattedStartTime,
+                end_time: exactEndTime, // Send exact end time based on employee
                 client_id: customerRes.data.id,
-                comment: 'Widget booking',
-                total_price: totalPrice,
-                services: selectedServices.map(s => ({
-                    service_id: s.id,
-                    price: s.price,
-                    duration_minutes: s.duration_minutes || s.duration
+                total_price: selectedServices.reduce((sum, s) => sum + getEmployeeServicePrice(s, empId), 0),
+                services: selectedServices.map(s => ({ 
+                    service_id: s.id, 
+                    price: getEmployeeServicePrice(s, empId), 
+                    duration_minutes: getEmployeeServiceDuration(s, empId) 
                 }))
             });
-        } catch (err: any) {
-            toast.error('Ошибка при создании клиента: ' + (err.response?.data?.error || err.message));
-        }
+        } catch (e) { toast.error('Ошибка связи'); }
     };
 
-    useEffect(() => {
-        window.scrollTo(0, 0);
-    }, [view]);
+    if (isLoadingWidget) return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-neutral-900 border-t-transparent rounded-full" /></div>;
 
-    if (view as any === 4 || view as any === 'success') {
-        return (
-            <div className="flex items-center justify-center p-4 min-h-[400px]">
-                <div className="text-center p-6 w-full">
-                    <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
-                    <h2 className="text-xl font-bold">Вы успешно записаны!</h2>
-                    <p className="mt-2 text-neutral-600 text-sm">
-                        Ждем вас в <strong>{branch?.name}</strong>.<br />
-                        {selectedSlot && format(new Date(selectedSlot.start_time), 'd MMMM, HH:mm', { locale: ru })}
-                    </p>
-                    <Button 
-                        className="mt-6 w-full h-12" 
-                        style={{ backgroundColor: accentColor }}
-                        onClick={() => {
-                            setView('home');
-                            setView('home');
-                            setSelectedServices([]);
-                            setSelectedEmployee(null);
-                            setSelectedSlot(null);
-                        }}
-                    >
-                        Записаться еще
-                    </Button>
-                </div>
-            </div>
-        );
-    }
+    const accentColor = settings.accentColor || '#F5FF82';
+    const socialLinks = company?.social_links ? (typeof company.social_links === 'string' ? JSON.parse(company.social_links) : company.social_links) : {};
 
-    if (isLoadingWidget) {
-        return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-neutral-200 border-t-neutral-900 rounded-full" /></div>;
-    }
-
-    if (!widget) {
-        return <div className="min-h-screen flex items-center justify-center bg-white"><p className="text-neutral-500">Виджет не найден</p></div>;
-    }
+    // Helper for "No Timezone Conversion" formatting
+    const displayTime = (iso: string) => iso ? iso.slice(11, 16) : '';
+    const displayDateFull = (iso: string) => iso ? format(new Date(iso), 'd MMMM', { locale: ru }) : '';
 
     return (
-        <div className="max-w-md mx-auto min-h-screen flex flex-col transition-colors duration-500" style={{ backgroundColor: bgColor }}>
-            {/* Header / Branch Info */}
-            <div className="p-6 border-b border-black/5 flex items-center justify-between">
-                {view !== 'branches' && isNetworkWidget && (
-                    <Button variant="ghost" size="icon" className="mr-2 -ml-2" onClick={() => setView('branches')}>
-                        <ChevronLeft className="h-5 w-5" />
-                    </Button>
+        <div className="max-w-md mx-auto min-h-screen flex flex-col bg-white">
+            <div className="h-32 shrink-0 relative overflow-hidden" style={{ backgroundColor: accentColor }}>
+                <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, black 1px, transparent 0)', backgroundSize: '16px 12px' }} />
+                {view !== 'home' && view !== 'success' && (
+                    <button onClick={() => setView('home')} className="absolute top-6 left-6 h-10 w-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-black z-20"><ArrowLeft className="h-5 w-5" /></button>
                 )}
-                <div className="flex-1">
-                    <h1 className="text-xl font-bold text-neutral-900">
-                        {view === 'branches' ? widget.Company?.name || 'Сеть филиалов' : branch?.name || 'Загрузка...'}
-                    </h1>
-                    {view !== 'branches' && <p className="text-xs text-neutral-500 mt-0.5">{branch?.address}</p>}
-                </div>
-                <div className="h-10 w-10 shrink-0 rounded-full bg-black/5 flex items-center justify-center overflow-hidden">
-                    {widget.Company?.logo_url ? <img src={widget.Company.logo_url} alt="" className="h-full w-full object-cover" /> : <User className="h-5 w-5 text-neutral-400" />}
-                </div>
             </div>
 
-            <div className="flex-1 p-4">
-                {view === 'branches' && (
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-bold">Выберите филиал</h2>
-                        <div className="space-y-3">
-                            {allBranches?.map((b: any) => (
-                                <div 
-                                    key={b.id}
-                                    onClick={() => {
-                                        setSelectedBranchId(b.id);
-                                        setView('home');
-                                    }}
-                                    className="p-5 rounded-2xl bg-white border border-black/5 shadow-sm cursor-pointer hover:border-black/10 transition-colors flex items-center justify-between"
-                                >
-                                    <div>
-                                        <h3 className="font-bold">{b.name}</h3>
-                                        <p className="text-xs text-neutral-500 mt-1">{b.address}</p>
-                                    </div>
-                                    <ChevronRight className="h-5 w-5 text-neutral-300" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
+            <div className="flex-1 overflow-y-auto px-6 pb-32 -mt-12 relative z-10 bg-white rounded-t-[40px] custom-scrollbar">
                 {view === 'home' && (
-                    <div className="space-y-3">
-                        {/* Specialist Selection Row - Hide if master widget */}
-                        {widget?.widget_type !== 'master' && (
-                            <div 
-                                onClick={() => setView('specialist')}
-                                className="flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`h-12 w-12 rounded-full flex items-center justify-center overflow-hidden ${selectedEmployee ? 'bg-neutral-50 border border-neutral-100' : 'bg-transparent border-2 border-dashed border-neutral-200'}`}>
-                                        {selectedEmployee?.avatar_url ? (
-                                            <img src={selectedEmployee.avatar_url} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <User className={`h-6 w-6 ${selectedEmployee ? 'text-neutral-400' : 'text-neutral-300'}`} />
-                                        )}
+                    <div className="pt-0 space-y-8 animate-in fade-in duration-500">
+                        <div className="bg-white rounded-[32px] p-6 shadow-xl border border-neutral-50 flex flex-col items-center text-center space-y-4">
+                            <Avatar className="h-24 w-24 border-4 border-white shadow-lg -mt-20"><AvatarImage src={company?.logo_url} /><AvatarFallback className="bg-neutral-900 text-white font-black text-2xl">{company?.name?.[0]}</AvatarFallback></Avatar>
+                            <div className="space-y-1"><h1 className="font-black text-2xl text-neutral-900 leading-tight">{company?.name || branch?.name}</h1><p className="text-sm text-neutral-500 font-medium px-4">{company?.description || 'Онлайн-запись'}</p></div>
+                            <div className="flex gap-3 justify-center w-full">
+                                {socialLinks.instagram && <a href={`https://instagram.com/${socialLinks.instagram}`} target="_blank" className="h-11 w-11 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 border border-neutral-100"><Instagram className="h-5 w-5" /></a>}
+                                {socialLinks.telegram && <a href={`https://t.me/${socialLinks.telegram}`} target="_blank" className="h-11 w-11 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 border border-neutral-100"><Send className="h-5 w-5" /></a>}
+                                {company?.website && <a href={company.website} target="_blank" className="h-11 w-11 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 border border-neutral-100"><Globe className="h-5 w-5" /></a>}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            {settings.stepOrder.map((step: string) => {
+                                if (step === 'specialist') return (
+                                    <div key={step} onClick={() => setView('specialist')} className="p-5 bg-neutral-50 rounded-[28px] border border-neutral-100 flex items-center justify-between cursor-pointer hover:bg-white transition-all shadow-sm">
+                                        <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-2xl bg-white border border-neutral-100 flex items-center justify-center text-neutral-900 shadow-sm"><User className="h-6 w-6" /></div><div className="flex flex-col"><span className="text-[10px] font-black uppercase text-neutral-400 mb-1">Специалист</span><span className="text-lg font-bold text-neutral-900 leading-tight">{selectedEmployee?.name || 'Любой специалист'}</span></div></div>
+                                        <ChevronRight className="h-5 w-5 text-neutral-300" />
                                     </div>
-                                    <span className={`font-medium ${selectedEmployee ? 'text-neutral-900' : 'text-neutral-700'}`}>
-                                        {selectedEmployee ? selectedEmployee.name : 'Выбрать специалиста'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {selectedEmployee && <button onClick={(e) => { e.stopPropagation(); setSelectedEmployee(null); }} className="text-neutral-300">×</button>}
-                                    <ChevronRight className="h-5 w-5 text-neutral-300" />
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Services Selection Row */}
-                        <div 
-                            onClick={() => setView('services')}
-                            className="flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
-                                    <Clock className="h-6 w-6 text-neutral-400" />
-                                </div>
-                                <span className={`font-medium ${selectedServices.length > 0 ? 'text-neutral-900' : 'text-neutral-700'}`}>
-                                    {selectedServices.length > 0 
-                                        ? `${selectedServices.length} услуг • ${totalPrice} BYN` 
-                                        : 'Выбрать услуги'}
-                                </span>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-neutral-300" />
+                                );
+                                if (step === 'services') return (
+                                    <div key={step} onClick={() => setView('services')} className="p-5 bg-neutral-50 rounded-[28px] border border-neutral-100 flex items-center justify-between cursor-pointer hover:bg-white transition-all shadow-sm">
+                                        <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-2xl bg-white border border-neutral-100 flex items-center justify-center text-neutral-900 shadow-sm"><Scissors className="h-6 w-6" /></div><div className="flex flex-col"><span className="text-[10px] font-black uppercase text-neutral-400 mb-1">Услуги</span><span className="text-lg font-bold text-neutral-900">{selectedServices.length > 0 ? `${selectedServices.length} выбрано` : 'Выбрать услуги'}</span></div></div>
+                                        <ChevronRight className="h-5 w-5 text-neutral-300" />
+                                    </div>
+                                );
+                                if (step === 'datetime') return (
+                                    <div key={step} onClick={() => setView('datetime')} className="p-5 bg-neutral-50 rounded-[28px] border border-neutral-100 flex items-center justify-between cursor-pointer hover:bg-white transition-all shadow-sm">
+                                        <div className="flex items-center gap-4"><div className="h-12 w-12 rounded-2xl bg-white border border-neutral-100 flex items-center justify-center text-neutral-900 shadow-sm"><CalendarIcon className="h-6 w-6" /></div><div className="flex flex-col"><span className="text-[10px] font-black uppercase text-neutral-400 mb-1">Дата и время</span><span className="text-lg font-bold text-neutral-900">{selectedSlot ? `${displayDateFull(selectedSlot.start_time)}, ${displayTime(selectedSlot.start_time)}` : (selectedDate ? format(selectedDate, 'd MMMM', { locale: ru }) : 'Выбрать дату')}</span></div></div>
+                                        <ChevronRight className="h-5 w-5 text-neutral-300" />
+                                    </div>
+                                );
+                                return null;
+                            })}
                         </div>
-
-                        {/* DateTime Selection Row */}
-                        <div 
-                            onClick={() => {
-                                setView('datetime');
-                            }}
-                            className={`flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200`}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
-                                    <CalendarIcon className="h-6 w-6 text-neutral-400" />
-                                </div>
-                                <span className="font-medium text-neutral-700">
-                                    {selectedSlot 
-                                        ? format(new Date(selectedSlot.start_time), 'd MMMM, HH:mm', { locale: ru }) 
-                                        : (selectedDate ? format(selectedDate, 'd MMMM', { locale: ru }) : 'Выбрать дату и время')}
-                                </span>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-neutral-300" />
-                        </div>
-
-                        {selectedSlot && (
-                            <Button 
-                                className={`w-full mt-8 h-14 rounded-2xl text-lg font-bold shadow-lg ${settings.buttonAnimation !== false ? (settings.animationType || 'th-pulse') : ''}`}
-                                style={{ backgroundColor: accentColor }}
-                                onClick={() => setView('profile')}
-                            >
-                                Перейти к оформлению
-                            </Button>
-                        )}
                     </div>
                 )}
 
                 {view === 'specialist' && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Button variant="ghost" size="icon" onClick={() => setView('home')}>
-                                <ChevronLeft className="h-6 w-6" />
-                            </Button>
-                            <h2 className="text-xl font-bold">Выбрать специалиста</h2>
+                    <div className="space-y-6 pt-4 animate-in slide-in-from-right-4">
+                        <h2 className="text-2xl font-black tracking-tight">Специалисты</h2>
+                        <div className="grid grid-cols-1 gap-3">
+                            <Card className={`cursor-pointer rounded-3xl transition-all border-2 ${!selectedEmployee ? 'border-black bg-neutral-50 shadow-lg' : 'border-neutral-100 bg-white'}`} onClick={() => handleSelectSpecialist(null)}>
+                                <CardContent className="p-4 flex items-center gap-4"><div className="h-16 w-16 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-400"><Users className="h-8 w-8" /></div><div className="flex-1"><h3 className="font-bold text-lg leading-tight">Любой специалист</h3><p className="text-[10px] text-neutral-400 font-black uppercase">Все доступные окна</p></div><ChevronRight className="h-5 w-5 text-neutral-300" /></CardContent>
+                            </Card>
+                            {employees.map((emp: any) => {
+                                const isAvailable = isEmployeeCompatible(emp);
+                                return (
+                                    <Card key={emp.id} className={`cursor-pointer rounded-3xl transition-all border-2 ${selectedEmployee?.id === emp.id ? 'border-black bg-neutral-50 shadow-lg' : isAvailable ? 'border-neutral-100 bg-white' : 'opacity-40 grayscale border-neutral-50'}`} onClick={() => {
+                                        if (!isAvailable) {
+                                            toast.error('Мастер недоступен', { description: 'Свободные слоты не позволяют выбрать этого мастера' });
+                                            return;
+                                        }
+                                        handleSelectSpecialist(emp);
+                                    }}>
+                                        <CardContent className="p-4 flex items-center gap-4"><Avatar className="h-16 w-16 border-2 border-white shadow-md"><AvatarImage src={emp.avatar_url} /><AvatarFallback className="bg-neutral-100 font-bold">{emp.name[0]}</AvatarFallback></Avatar>
+                                        <div className="flex-1"><h3 className="font-bold text-lg leading-tight truncate">{emp.name}</h3><p className="text-[10px] text-neutral-400 font-black uppercase">{emp.position || 'Специалист'}</p></div><ChevronRight className="h-5 w-5 text-neutral-300" /></CardContent>
+                                    </Card>
+                                );
+                            })}
                         </div>
-
-                        {widget?.widget_type !== 'master' && (
-                            <div 
-                                onClick={() => { setSelectedEmployee(null); setView('home'); }}
-                                className={`flex items-center justify-between p-4 rounded-2xl bg-white border cursor-pointer ${!selectedEmployee ? 'border-neutral-900' : 'border-neutral-100'}`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
-                                        <User className="h-6 w-6 text-neutral-400" />
-                                    </div>
-                                    <span className="font-medium">Любой специалист</span>
-                                </div>
-                                <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${!selectedEmployee ? 'border-black' : 'border-neutral-200'}`}>
-                                    {!selectedEmployee && <div className="h-2.5 w-2.5 rounded-full bg-black" />}
-                                </div>
-                            </div>
-                        )}
-
-                        {employees?.filter((emp: any) => widget?.widget_type !== 'master' || emp.id === widget.employee_id).map((emp: any) => {
-                            const isCompatible = isEmployeeCompatible(emp);
-                            return (
-                                <div key={emp.id} className={`space-y-3 ${!isCompatible ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <div 
-                                        onClick={() => { setSelectedEmployee(emp); setView('home'); }}
-                                        className={`flex items-center justify-between p-4 rounded-2xl bg-white border cursor-pointer hover:border-neutral-300 ${selectedEmployee?.id === emp.id ? 'border-neutral-900' : 'border-neutral-100'}`}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-12 w-12 rounded-full bg-neutral-100 overflow-hidden">
-                                                {emp.avatar_url ? <img src={emp.avatar_url} alt="" className="h-full w-full object-cover" /> : <User className="h-full w-full p-3 text-neutral-400" />}
-                                            </div>
-                                            <div>
-                                                <p className="font-bold">{emp.name}</p>
-                                                <p className="text-xs text-neutral-500">{emp.position}</p>
-                                                <div className="flex items-center gap-1 mt-1 text-orange-400">
-                                                    {'★'.repeat(5)} <span className="text-neutral-400 text-[10px] ml-1">42 отзыва</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-8 w-8 rounded-full border border-neutral-100 flex items-center justify-center">
-                                                <span className="text-xs text-neutral-400">i</span>
-                                            </div>
-                                            <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${selectedEmployee?.id === emp.id ? 'border-black' : 'border-neutral-200'}`}>
-                                                {selectedEmployee?.id === emp.id && <div className="h-2.5 w-2.5 rounded-full bg-black" />}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {isCompatible && (
-                                        <div className="px-1">
-                                            <p className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider mb-2">Ближайшее время: сегодня</p>
-                                            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                                                {['11:00', '11:30', '12:00', '12:30', '13:00'].map(t => (
-                                                    <div 
-                                                        key={t} 
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedEmployee(emp);
-                                                            // Logic to select this slot would go here if we had full date context
-                                                            setView('home');
-                                                        }}
-                                                        className="px-3 py-1.5 rounded-lg bg-neutral-50 border border-neutral-100 text-sm font-medium whitespace-nowrap cursor-pointer hover:border-neutral-300"
-                                                    >
-                                                        {t}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {!isCompatible && (
-                                        <p className="text-[10px] text-red-400 font-medium px-1">Не оказывает выбранные услуги</p>
-                                    )}
-                                </div>
-                            );
-                        })}
                     </div>
                 )}
 
                 {view === 'services' && (
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => setView('home')}>
-                                    <ChevronLeft className="h-6 w-6" />
-                                </Button>
-                                <h2 className="text-xl font-bold">Выбрать услуги</h2>
-                            </div>
-                            {selectedServices.length > 0 && (
-                                <button onClick={() => setSelectedServices([])} className="text-xs text-neutral-400 hover:text-neutral-600">Очистить</button>
-                            )}
-                        </div>
-
+                    <div className="space-y-6 pt-4 animate-in slide-in-from-right-4">
+                        <div className="flex items-center justify-between"><h2 className="text-2xl font-black tracking-tight">Услуги</h2>{selectedServices.length > 0 && <Badge className="bg-black text-white rounded-full">{selectedServices.length}</Badge>}</div>
                         <div className="space-y-4">
                             {groupedServices.map((group: any) => (
                                 <div key={group.id} className="space-y-2">
@@ -642,29 +396,22 @@ export default function WidgetPage() {
                                     <div className="grid gap-2">
                                         {group.services?.map((svc: any) => {
                                             const isSelected = selectedServices.some(s => s.id === svc.id);
+                                            const isAvailable = isServiceCompatible(svc);
                                             return (
-                                                <div
-                                                    key={svc.id}
-                                                    onClick={() => {
-                                                        if (isSelected) {
-                                                            setSelectedServices(prev => prev.filter(s => s.id !== svc.id));
+                                                <div key={svc.id} onClick={() => {
+                                                    if (!isAvailable && !isSelected) {
+                                                        const provides = !selectedEmployee || svc.employees?.some((e: any) => e.employee_id === selectedEmployee.id);
+                                                        if (!provides) {
+                                                            toast.error('Мастер не оказывает', { description: 'Выбранный специалист не предоставляет эту услугу' });
                                                         } else {
-                                                            setSelectedServices(prev => [...prev, svc]);
+                                                            toast.error('Ограничение по времени', { description: 'Свободные слоты не позволяют добавить эту услугу' });
                                                         }
-                                                    }}
-                                                    className={`p-4 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${
-                                                        isSelected ? 'border-neutral-900 bg-neutral-50' : 'border-neutral-100 bg-white hover:border-neutral-200'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-4">
-                                                        <div className={`h-6 w-6 rounded-lg border flex items-center justify-center transition-colors ${isSelected ? 'bg-black border-black text-white' : 'border-neutral-200'}`}>
-                                                            {isSelected && <span className="text-xs">✓</span>}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-sm">{svc.name}</p>
-                                                            <p className="text-[10px] text-neutral-500 mt-0.5">{svc.price} BYN • {svc.duration_minutes || svc.duration} мин</p>
-                                                        </div>
-                                                    </div>
+                                                        return;
+                                                    }
+                                                    handleSelectService(svc);
+                                                }} className={`p-5 rounded-[28px] border-2 transition-all flex items-center justify-between cursor-pointer ${isSelected ? 'border-black bg-neutral-50 shadow-md' : isAvailable ? 'border-neutral-100 bg-white' : 'opacity-40 grayscale border-neutral-50'}`}>
+                                                    <div className="flex flex-col gap-1 pr-4"><span className="font-bold text-neutral-900 leading-tight">{svc.name}</span><span className="text-[10px] font-black uppercase text-neutral-400">{getEmployeeServiceDuration(svc, selectedEmployee?.id || 0) || svc.duration_minutes || svc.duration || 0} мин</span></div>
+                                                    <div className="flex items-center gap-4"><span className="font-black text-neutral-900">{getEmployeeServicePrice(svc, selectedEmployee?.id || 0) || svc.price || 0} BYN</span><div className={`h-6 w-6 rounded-lg border-2 flex items-center justify-center ${isSelected ? 'bg-black border-black text-white' : 'border-neutral-200'}`}>{isSelected && <Check className="h-3.5 w-3.5" />}</div></div>
                                                 </div>
                                             );
                                         })}
@@ -672,149 +419,70 @@ export default function WidgetPage() {
                                 </div>
                             ))}
                         </div>
-
-                        {selectedServices.length > 0 && (
-                            <div className="sticky bottom-4 left-0 right-0">
-                                <Button 
-                                    className="w-full h-14 rounded-2xl text-lg font-bold shadow-xl flex items-center justify-between px-6"
-                                    style={{ backgroundColor: accentColor }}
-                                    onClick={() => setView('home')}
-                                >
-                                    <span>Выбрать</span>
-                                    <span>{totalPrice} BYN</span>
-                                </Button>
-                            </div>
-                        )}
+                        <Button className="w-full h-14 rounded-2xl font-black bg-black text-white shadow-xl" onClick={() => setView('home')}>Готово</Button>
                     </div>
                 )}
 
                 {view === 'datetime' && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Button variant="ghost" size="icon" onClick={() => setView('home')}>
-                                <ChevronLeft className="h-6 w-6" />
-                            </Button>
-                            <h2 className="text-xl font-bold">Дата и время</h2>
+                    <div className="space-y-6 pt-4 animate-in slide-in-from-right-4">
+                        <h2 className="text-2xl font-black tracking-tight">Дата и время</h2>
+                        <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
+                            {[...Array(21)].map((_, i) => {
+                                const date = DateTime.now().plus({ days: i }).toJSDate();
+                                const active = selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
+                                const isAvailable = isDateCompatible(date);
+                                return (
+                                    <button key={i} disabled={!isAvailable} className={`shrink-0 w-16 h-20 rounded-2xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${active ? 'border-black bg-neutral-900 text-white shadow-lg scale-105' : isAvailable ? 'border-neutral-100 bg-white hover:border-neutral-300' : 'opacity-20 grayscale border-neutral-50 cursor-not-allowed'}`} onClick={() => setSelectedDate(date)}><span className={`text-[10px] font-black uppercase ${active ? 'text-white/50' : 'text-neutral-400'}`}>{format(date, 'ccc', { locale: ru })}</span><span className="text-lg font-black">{format(date, 'd')}</span></button>
+                                );
+                            })}
                         </div>
-
-                        <Calendar
-                            mode="single"
-                            selected={selectedDate}
-                            onSelect={(d) => d && setSelectedDate(d)}
-                            locale={ru}
-                            className="rounded-2xl border border-neutral-100 p-4 bg-white shadow-sm"
-                            required
-                        />
-
-                        <div className="space-y-4">
-                            <h3 className="text-sm font-bold text-neutral-900">Свободные окна</h3>
-                            <div className="grid grid-cols-4 gap-2">
-                                {availableSlots.map((slot: any, i: number) => (
-                                    <Button
-                                        key={i}
-                                        variant={selectedSlot === slot ? 'default' : 'outline'}
-                                        className={`h-11 rounded-xl text-sm font-medium ${
-                                            selectedSlot === slot ? '' : 'border-neutral-100 bg-white hover:bg-neutral-50'
-                                        }`}
-                                        style={selectedSlot === slot ? { backgroundColor: accentColor } : {}}
-                                        onClick={() => {
-                                            setSelectedSlot(slot);
-                                            setView('home');
-                                        }}
-                                    >
-                                        {format(new Date(slot.start_time), 'HH:mm')}
-                                    </Button>
-                                ))}
-                            </div>
-                            {isLoadingSlots && <p className="text-center text-xs text-neutral-400 py-4">Поиск свободных мест...</p>}
-                            {!availableSlots.length && !isLoadingSlots && (
-                                <div className="text-center py-8 rounded-2xl border-2 border-dashed border-neutral-100">
-                                    <p className="text-sm text-neutral-400">На этот день нет подходящих окон</p>
-                                    <p className="text-[10px] text-neutral-300 mt-1">Попробуйте другую дату или сократите список услуг</p>
-                                </div>
-                            )}
+                        <div className="grid grid-cols-3 gap-3">
+                            {availableSlots.map((slot: any, i: number) => (
+                                <button key={i} className={`h-12 rounded-xl border-2 font-bold text-sm transition-all ${selectedSlot?.start_time === slot.start_time ? 'border-black bg-black text-white' : 'border-neutral-100 bg-neutral-50 hover:border-neutral-300'}`} onClick={() => handleSelectSlot(slot)}>{displayTime(slot.start_time)}</button>
+                            ))}
+                            {availableSlots.length === 0 && !isLoadingSlots && selectedDate && <div className="col-span-3 py-12 text-center text-neutral-400 font-bold bg-neutral-50 rounded-3xl border border-dashed border-neutral-200">Нет свободных окон</div>}
+                            {!selectedDate && <div className="col-span-3 py-12 text-center text-neutral-400 font-bold">Выберите дату</div>}
+                            {isLoadingSlots && <div className="col-span-3 py-12 text-center text-neutral-400 animate-pulse">Загрузка...</div>}
                         </div>
+                        <Button className="w-full h-14 rounded-2xl font-black bg-black text-white shadow-xl" onClick={() => setView('home')}>Готово</Button>
                     </div>
                 )}
 
                 {view === 'profile' && (
-                    <div className="space-y-6">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Button variant="ghost" size="icon" onClick={() => setView('home')}>
-                                <ChevronLeft className="h-6 w-6" />
-                            </Button>
-                            <h2 className="text-xl font-bold">Оформление</h2>
+                    <div className="space-y-8 pt-4 animate-in slide-in-from-right-4">
+                        <h2 className="text-2xl font-black tracking-tight text-neutral-900">Ваши данные</h2>
+                        <div className="space-y-4">
+                            <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Имя</Label><Input value={clientData.name} onChange={(e) => setClientData({...clientData, name: e.target.value})} className="h-14 rounded-2xl border-neutral-100 bg-neutral-50 font-bold" /></div>
+                            <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Телефон</Label><Input value={clientData.phone} onChange={(e) => setClientData({...clientData, phone: e.target.value})} className="h-14 rounded-2xl border-neutral-100 bg-neutral-50 font-bold" /></div>
+                            <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-neutral-400 ml-1">Комментарий</Label><Textarea value={clientData.comment} onChange={(e) => setClientData({...clientData, comment: e.target.value})} className="min-h-[100px] rounded-2xl border-neutral-100 bg-neutral-50" /></div>
                         </div>
+                        <Button className="w-full h-16 rounded-3xl text-xl font-black shadow-2xl" style={{ backgroundColor: accentColor, color: '#000' }} onClick={handleFinalBooking} disabled={bookingMutation.isPending}>{bookingMutation.isPending ? 'Записываем...' : 'Записаться'}</Button>
+                    </div>
+                )}
 
-                        <div className="p-5 rounded-3xl bg-neutral-900 text-white space-y-4 shadow-xl">
-                            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                                <div>
-                                    <p className="text-[10px] text-white/50 uppercase tracking-widest mb-1">Мастер</p>
-                                    <p className="font-bold">{selectedEmployee?.name || 'Любой специалист'}</p>
-                                </div>
-                                <div className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center">
-                                    <User className="h-5 w-5" />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <p className="text-[10px] text-white/50 uppercase tracking-widest">Услуги</p>
-                                {selectedServices.map(s => (
-                                    <div key={s.id} className="flex justify-between text-sm">
-                                        <span>{s.name}</span>
-                                        <span className="font-bold">{s.price} BYN</span>
-                                    </div>
-                                ))}
-                                <div className="pt-2 border-t border-white/10 flex justify-between font-bold text-lg">
-                                    <span>Итого</span>
-                                    <span>{totalPrice} BYN</span>
-                                </div>
-                            </div>
-                            <div className="pt-2">
-                                <p className="text-[10px] text-white/50 uppercase tracking-widest mb-1">Дата и время</p>
-                                <p className="font-bold text-blue-400">
-                                    {selectedSlot && format(new Date(selectedSlot.start_time), 'd MMMM, HH:mm', { locale: ru })}
-                                </p>
-                            </div>
+                {view === 'success' && (
+                    <div className="flex flex-col items-center justify-center text-center space-y-6 pt-12 animate-in zoom-in-95">
+                        <div className="h-24 w-24 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 shadow-inner"><CheckCircle2 className="h-12 w-12 stroke-[3]" /></div>
+                        <h2 className="text-3xl font-black tracking-tight text-neutral-900">Вы записаны!</h2>
+                        <div className="w-full bg-neutral-50 p-6 rounded-[32px] border border-neutral-100 space-y-4 text-left shadow-inner">
+                            <div className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-neutral-100"><CalendarIcon className="h-5 w-5 text-neutral-400" /></div><div><p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Дата и время</p><p className="font-bold text-neutral-900">{selectedSlot ? `${displayDateFull(selectedSlot.start_time)}, ${displayTime(selectedSlot.start_time)}` : ''}</p></div></div>
+                            <div className="flex items-center gap-4"><div className="h-10 w-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-neutral-100"><User className="h-5 w-5 text-neutral-400" /></div><div><p className="text-[10px] font-black uppercase text-neutral-400 mb-1">Специалист</p><p className="font-bold text-neutral-900">{selectedEmployee?.name || selectedSlot?.employee?.name}</p></div></div>
                         </div>
-
-                        <div className="space-y-4 mt-8">
-                            <div className="space-y-2">
-                                <Label htmlFor="phone" className="text-sm font-bold text-neutral-700 ml-1">Телефон</Label>
-                                <Input
-                                    id="phone"
-                                    placeholder="+375 (__) ___-__-__"
-                                    className="h-14 rounded-2xl border-neutral-100 bg-neutral-50 px-5 text-lg"
-                                    value={guestPhone}
-                                    onChange={(e) => setGuestPhone(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="name" className="text-sm font-bold text-neutral-700 ml-1">Ваше имя</Label>
-                                <Input
-                                    id="name"
-                                    placeholder="Как к вам обращаться?"
-                                    className="h-14 rounded-2xl border-neutral-100 bg-neutral-50 px-5 text-lg"
-                                    value={guestName}
-                                    onChange={(e) => setGuestName(e.target.value)}
-                                />
-                            </div>
-                            
-                            <Button 
-                                className="w-full h-16 rounded-2xl text-xl font-bold shadow-2xl mt-4" 
-                                style={{ backgroundColor: accentColor }}
-                                onClick={handleBooking} 
-                                disabled={bookingMutation.isPending || createCustomerMutation.isPending}
-                            >
-                                {(bookingMutation.isPending || createCustomerMutation.isPending) ? 'Бронирование...' : 'Записаться'}
-                            </Button>
-                            
-                            <p className="text-center text-[10px] text-neutral-400 px-8">
-                                Нажимая «Записаться», вы подтверждаете согласие на обработку персональных данных
-                            </p>
-                        </div>
+                        <Button onClick={() => window.location.reload()} variant="outline" className="h-12 px-8 rounded-2xl font-bold border-neutral-200">На главную</Button>
                     </div>
                 )}
             </div>
+
+            {/* Footer */}
+            {view === 'home' && (
+                <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8 bg-white/90 backdrop-blur-xl border-t border-neutral-100 z-30 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+                    {selectedEmployee && selectedServices.length > 0 && selectedSlot ? (
+                        <Button className="w-full h-14 rounded-2xl font-black text-base shadow-xl transition-all" style={{ backgroundColor: accentColor, color: '#000' }} onClick={() => setView('profile')}>Оформить запись</Button>
+                    ) : (
+                        <Button className="w-full h-14 rounded-2xl font-black text-base shadow-xl transition-all" style={{ backgroundColor: accentColor, color: '#000' }} onClick={() => { if (branch?.phone) window.location.href = `tel:${branch.phone}`; else toast.error('Телефон не указан'); }}><Phone className="h-5 w-5 mr-2" /> Позвонить</Button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
