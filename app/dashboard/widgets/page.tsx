@@ -50,6 +50,12 @@ export interface SavedWidget {
 }
 
 export default function WidgetsPage() {
+    const [mounted, setMounted] = useState(false);
+    
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     // Current user context (mocked for now, should come from auth provider)
     const [company] = useState({ id: 1, name: 'Main Company' });
 
@@ -320,7 +326,7 @@ export default function WidgetsPage() {
                                                 <td className="p-4 align-top">
                                                     <div className="flex items-center gap-2">
                                                         <code className="text-xs bg-neutral-100 px-2 py-1 rounded-md text-neutral-600 max-w-[200px] truncate">
-                                                            {`${typeof window !== 'undefined' ? window.location.origin : ''}/widget/${widget.code}`}
+                                                            {`${mounted ? window.location.origin : ''}/widget/${widget.code}`}
                                                         </code>
                                                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => handleCopy(`${window.location.origin}/widget/${widget.code}`)}>
                                                             <Copy className="h-3.5 w-3.5" />
@@ -968,7 +974,7 @@ export default function WidgetsPage() {
                                 <p className="text-xs text-neutral-500">Добавьте этот код в секцию &lt;head&gt; или в конец страницы перед &lt;/body&gt;. На сайте появится плавающая кнопка записи.</p>
                                 <div className="relative group">
                                     <pre className="bg-neutral-900 text-neutral-100 p-6 rounded-2xl text-[11px] overflow-x-auto font-mono leading-relaxed">
-                                        {`<script \n  type="text/javascript" \n  src="${typeof window !== 'undefined' ? window.location.origin : ''}/widget.js?id=${selectedWidget?.code}" \n  charset="UTF-8">\n</script>`}
+                                        {`<script \n  type="text/javascript" \n  src="${mounted ? window.location.origin : ''}/widget.js?id=${selectedWidget?.code}" \n  charset="UTF-8">\n</script>`}
                                     </pre>
                                     <Button 
                                         variant="ghost" 
