@@ -115,6 +115,38 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+@keyframes pulse-subtle {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.1); }
+  50% { transform: scale(1.02); box-shadow: 0 0 20px 0 rgba(0, 0, 0, 0.15); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.1); }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s infinite ease-in-out;
+}
+.th-pulse {
+  animation: pulse-subtle 2s infinite ease-in-out;
+}
+
+@keyframes th-shake { 
+  0%, 100% { transform: rotate(0); } 
+  10%, 30%, 50%, 70%, 90% { transform: rotate(-3deg); } 
+  20%, 40%, 60%, 80% { transform: rotate(3deg); } 
+}
+.th-shake { animation: th-shake 0.8s cubic-bezier(.36,.07,.19,.97) both infinite; }
+
+@keyframes th-float { 
+  0%, 100% { transform: translateY(0); } 
+  50% { transform: translateY(-10px); } 
+}
+.th-float { animation: th-float 3s ease-in-out infinite; }
+
+@keyframes th-glow { 
+  0%, 100% { box-shadow: 0 0 5px rgba(0,0,0,0.2); } 
+  50% { box-shadow: 0 0 20px rgba(0,0,0,0.4); } 
+}
+.th-glow { animation: th-glow 2s ease-in-out infinite; }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

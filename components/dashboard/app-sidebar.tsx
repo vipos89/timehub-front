@@ -10,6 +10,7 @@ import {
     Settings,
     LogOut,
     Scissors,
+    AppWindow,
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -61,6 +62,11 @@ const navItems = [
         title: 'Записи',
         url: '/dashboard/appointments',
         icon: BookOpen,
+    },
+    {
+        title: 'Виджеты',
+        url: '/dashboard/widgets',
+        icon: AppWindow,
     },
 ];
 

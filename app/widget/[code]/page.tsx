@@ -17,11 +17,27 @@ import { api } from '@/lib/api';
 
 
 export default function WidgetPage() {
-    const { branchId } = useParams();
+    const { code } = useParams();
     const searchParams = useSearchParams();
-    const [view, setView] = useState<'home' | 'specialist' | 'services' | 'datetime' | 'profile'>('home');
+    const [view, setView] = useState<'home' | 'specialist' | 'services' | 'datetime' | 'profile' | 'branches'>('home');
+
+    // Widget Config State
+    const { data: widget, isLoading: isLoadingWidget } = useQuery({
+        queryKey: ['widget', code],
+        queryFn: async () => {
+            const res = await api.get(`/widgets/${code}`);
+            return res.data;
+        },
+        enabled: !!code,
+    });
+
+    const settings = useMemo(() => {
+        if (!widget?.settings) return {};
+        try { return JSON.parse(widget.settings); } catch (e) { return {}; }
+    }, [widget?.settings]);
 
     // Selection state
+    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
     const [selectedServices, setSelectedServices] = useState<any[]>([]);
     const [selectedEmployee, setSelectedEmployee] = useState<any>(null); // null means "Any"
     const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -31,46 +47,120 @@ export default function WidgetPage() {
     const [guestName, setGuestName] = useState('');
     const [guestPhone, setGuestPhone] = useState('');
 
-    // Theme settings from URL
-    const accentColor = searchParams.get('accent') || '#000000';
-    const bgColor = searchParams.get('bg') || '#ffffff';
+    // Theme settings from Widget Settings or URL (fallback)
+    const accentColor = settings.accentColor || searchParams.get('accent') || '#000000';
+    const bgColor = settings.bgColor || searchParams.get('bg') || '#ffffff';
+    const stepsOrder = settings.stepsOrder || ['services', 'specialist', 'datetime'];
+
+    // Analytics execution
+    useEffect(() => {
+        if (settings.analyticsCode) {
+            try {
+                const script = document.createElement('script');
+                script.innerHTML = settings.analyticsCode;
+                document.head.appendChild(script);
+            } catch (e) {
+                console.error('Failed to execute analytics code', e);
+            }
+        }
+    }, [settings.analyticsCode]);
+
+    // Set initial state based on widget type
+    const activeBranchId = selectedBranchId || widget?.branch_id;
+    const isNetworkWidget = widget?.widget_type === 'network';
+
+    // Navigation logic based on steps order
+    const handleNextStep = (currentStep: string) => {
+        const currentIndex = stepsOrder.indexOf(currentStep);
+        if (currentIndex !== -1 && currentIndex < stepsOrder.length - 1) {
+            const nextStep = stepsOrder[currentIndex + 1];
+            
+            // Skip specialist if it's a master widget and next step is specialist
+            if (nextStep === 'specialist' && widget?.widget_type === 'master') {
+                handleNextStep('specialist');
+                return;
+            }
+
+            setView(nextStep as any);
+        } else {
+            setView('home'); // Fallback to summary
+        }
+    };
 
     // Queries
-    const { data: branch } = useQuery({
-        queryKey: ['branch', branchId],
+    const { data: allBranches } = useQuery({
+        queryKey: ['companyBranches', widget?.company_id],
         queryFn: async () => {
-            const res = await api.get(`/branches/${branchId}`);
+            const res = await api.get(`/companies/${widget.company_id}/branches`);
             return res.data;
         },
-        enabled: !!branchId,
+        enabled: !!widget?.company_id && isNetworkWidget,
+    });
+
+    const { data: branch } = useQuery({
+        queryKey: ['branch', activeBranchId],
+        queryFn: async () => {
+            const res = await api.get(`/branches/${activeBranchId}`);
+            return res.data;
+        },
+        enabled: !!activeBranchId,
     });
 
     const { data: categories } = useQuery({
-        queryKey: ['categories', branchId],
+        queryKey: ['categories', activeBranchId],
         queryFn: async () => {
-            const res = await api.get(`/branches/${branchId}/categories`);
+            const res = await api.get(`/branches/${activeBranchId}/categories`);
             return res.data;
         },
-        enabled: !!branchId,
+        enabled: !!activeBranchId,
     });
 
     const { data: allServices } = useQuery({
-        queryKey: ['services', branchId],
+        queryKey: ['services', activeBranchId],
         queryFn: async () => {
-            const res = await api.get(`/branches/${branchId}/services`);
+            const res = await api.get(`/branches/${activeBranchId}/services`);
             return res.data;
         },
-        enabled: !!branchId,
+        enabled: !!activeBranchId,
     });
 
     const { data: employees } = useQuery({
-        queryKey: ['employees', branchId],
+        queryKey: ['employees', activeBranchId],
         queryFn: async () => {
-            const res = await api.get(`/employees?branch_id=${branchId}`);
+            const res = await api.get(`/employees?branch_id=${activeBranchId}`);
             return res.data;
         },
-        enabled: !!branchId,
+        enabled: !!activeBranchId,
     });
+
+    // Effects to initialize state based on widget
+    useEffect(() => {
+        if (widget) {
+            if (widget.widget_type === 'network' && !selectedBranchId) {
+                // If network has only one branch, auto-select it
+                if (allBranches && allBranches.length === 1) {
+                    setSelectedBranchId(allBranches[0].id);
+                    setView('home');
+                } else {
+                    setView('branches');
+                }
+            } else if (widget.widget_type === 'branch' && widget.branch_id) {
+                setSelectedBranchId(widget.branch_id);
+                setView('home');
+            } else if (widget.widget_type === 'master' && widget.employee_id) {
+                setSelectedBranchId(widget.branch_id);
+                setView('home');
+            }
+        }
+    }, [widget, allBranches, selectedBranchId]);
+
+    // Auto-select master if it's a master widget
+    useEffect(() => {
+        if (widget?.widget_type === 'master' && widget.employee_id && employees && !selectedEmployee) {
+            const emp = employees.find((e: any) => e.id === widget.employee_id);
+            if (emp) setSelectedEmployee(emp);
+        }
+    }, [widget, employees, selectedEmployee]);
 
     // Group services (Categorized vs Uncategorized)
     const groupedServices = useMemo(() => {
@@ -227,7 +317,7 @@ export default function WidgetPage() {
             setView('success' as any);
             toast.success('Запись успешно создана!');
             if (window.parent) {
-                window.parent.postMessage({ type: 'booking_success', branchId }, '*');
+                window.parent.postMessage({ type: 'booking_success', branchId: activeBranchId }, '*');
             }
         },
         onError: (err: any) => {
@@ -249,7 +339,7 @@ export default function WidgetPage() {
             const customerRes = await createCustomerMutation.mutateAsync({
                 first_name: guestName,
                 phone: guestPhone,
-                branch_id: Number(branchId),
+                branch_id: Number(activeBranchId),
                 email: '', 
             });
 
@@ -316,49 +406,85 @@ export default function WidgetPage() {
         );
     }
 
+    if (isLoadingWidget) {
+        return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-neutral-200 border-t-neutral-900 rounded-full" /></div>;
+    }
+
+    if (!widget) {
+        return <div className="min-h-screen flex items-center justify-center bg-white"><p className="text-neutral-500">Виджет не найден</p></div>;
+    }
+
     return (
-        <div className="max-w-md mx-auto min-h-screen flex flex-col" style={{ backgroundColor: bgColor }}>
+        <div className="max-w-md mx-auto min-h-screen flex flex-col transition-colors duration-500" style={{ backgroundColor: bgColor }}>
             {/* Header / Branch Info */}
-            <div className="p-6 border-b border-neutral-100">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold flex items-center gap-2">
-                            {branch?.name || 'Загрузка...'}
-                            <ChevronLeft className="h-5 w-5 text-neutral-400 rotate-[-90deg]" />
-                        </h1>
-                        <p className="text-sm text-neutral-400 mt-1">{branch?.address}</p>
-                    </div>
-                    <div className="h-10 w-10 rounded-full bg-neutral-100 flex items-center justify-center">
-                        <User className="h-5 w-5 text-neutral-400" />
-                    </div>
+            <div className="p-6 border-b border-black/5 flex items-center justify-between">
+                {view !== 'branches' && isNetworkWidget && (
+                    <Button variant="ghost" size="icon" className="mr-2 -ml-2" onClick={() => setView('branches')}>
+                        <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                )}
+                <div className="flex-1">
+                    <h1 className="text-xl font-bold text-neutral-900">
+                        {view === 'branches' ? widget.Company?.name || 'Сеть филиалов' : branch?.name || 'Загрузка...'}
+                    </h1>
+                    {view !== 'branches' && <p className="text-xs text-neutral-500 mt-0.5">{branch?.address}</p>}
+                </div>
+                <div className="h-10 w-10 shrink-0 rounded-full bg-black/5 flex items-center justify-center overflow-hidden">
+                    {widget.Company?.logo_url ? <img src={widget.Company.logo_url} alt="" className="h-full w-full object-cover" /> : <User className="h-5 w-5 text-neutral-400" />}
                 </div>
             </div>
 
             <div className="flex-1 p-4">
+                {view === 'branches' && (
+                    <div className="space-y-4">
+                        <h2 className="text-lg font-bold">Выберите филиал</h2>
+                        <div className="space-y-3">
+                            {allBranches?.map((b: any) => (
+                                <div 
+                                    key={b.id}
+                                    onClick={() => {
+                                        setSelectedBranchId(b.id);
+                                        setView('home');
+                                    }}
+                                    className="p-5 rounded-2xl bg-white border border-black/5 shadow-sm cursor-pointer hover:border-black/10 transition-colors flex items-center justify-between"
+                                >
+                                    <div>
+                                        <h3 className="font-bold">{b.name}</h3>
+                                        <p className="text-xs text-neutral-500 mt-1">{b.address}</p>
+                                    </div>
+                                    <ChevronRight className="h-5 w-5 text-neutral-300" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {view === 'home' && (
                     <div className="space-y-3">
-                        {/* Specialist Selection Row */}
-                        <div 
-                            onClick={() => setView('specialist')}
-                            className="flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className={`h-12 w-12 rounded-full flex items-center justify-center overflow-hidden ${selectedEmployee ? 'bg-neutral-50 border border-neutral-100' : 'bg-transparent border-2 border-dashed border-neutral-200'}`}>
-                                    {selectedEmployee?.avatar_url ? (
-                                        <img src={selectedEmployee.avatar_url} alt="" className="h-full w-full object-cover" />
-                                    ) : (
-                                        <User className={`h-6 w-6 ${selectedEmployee ? 'text-neutral-400' : 'text-neutral-300'}`} />
-                                    )}
+                        {/* Specialist Selection Row - Hide if master widget */}
+                        {widget?.widget_type !== 'master' && (
+                            <div 
+                                onClick={() => setView('specialist')}
+                                className="flex items-center justify-between p-4 rounded-2xl bg-white border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`h-12 w-12 rounded-full flex items-center justify-center overflow-hidden ${selectedEmployee ? 'bg-neutral-50 border border-neutral-100' : 'bg-transparent border-2 border-dashed border-neutral-200'}`}>
+                                        {selectedEmployee?.avatar_url ? (
+                                            <img src={selectedEmployee.avatar_url} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <User className={`h-6 w-6 ${selectedEmployee ? 'text-neutral-400' : 'text-neutral-300'}`} />
+                                        )}
+                                    </div>
+                                    <span className={`font-medium ${selectedEmployee ? 'text-neutral-900' : 'text-neutral-700'}`}>
+                                        {selectedEmployee ? selectedEmployee.name : 'Выбрать специалиста'}
+                                    </span>
                                 </div>
-                                <span className={`font-medium ${selectedEmployee ? 'text-neutral-900' : 'text-neutral-700'}`}>
-                                    {selectedEmployee ? selectedEmployee.name : 'Выбрать специалиста'}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    {selectedEmployee && <button onClick={(e) => { e.stopPropagation(); setSelectedEmployee(null); }} className="text-neutral-300">×</button>}
+                                    <ChevronRight className="h-5 w-5 text-neutral-300" />
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {selectedEmployee && <button onClick={(e) => { e.stopPropagation(); setSelectedEmployee(null); }} className="text-neutral-300">×</button>}
-                                <ChevronRight className="h-5 w-5 text-neutral-300" />
-                            </div>
-                        </div>
+                        )}
 
                         {/* Services Selection Row */}
                         <div 
@@ -400,7 +526,7 @@ export default function WidgetPage() {
 
                         {selectedSlot && (
                             <Button 
-                                className="w-full mt-8 h-14 rounded-2xl text-lg font-bold shadow-lg"
+                                className={`w-full mt-8 h-14 rounded-2xl text-lg font-bold shadow-lg ${settings.buttonAnimation !== false ? (settings.animationType || 'th-pulse') : ''}`}
                                 style={{ backgroundColor: accentColor }}
                                 onClick={() => setView('profile')}
                             >
@@ -419,22 +545,24 @@ export default function WidgetPage() {
                             <h2 className="text-xl font-bold">Выбрать специалиста</h2>
                         </div>
 
-                        <div 
-                            onClick={() => { setSelectedEmployee(null); setView('home'); }}
-                            className={`flex items-center justify-between p-4 rounded-2xl bg-white border cursor-pointer ${!selectedEmployee ? 'border-neutral-900' : 'border-neutral-100'}`}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
-                                    <User className="h-6 w-6 text-neutral-400" />
+                        {widget?.widget_type !== 'master' && (
+                            <div 
+                                onClick={() => { setSelectedEmployee(null); setView('home'); }}
+                                className={`flex items-center justify-between p-4 rounded-2xl bg-white border cursor-pointer ${!selectedEmployee ? 'border-neutral-900' : 'border-neutral-100'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="h-12 w-12 rounded-full bg-neutral-50 flex items-center justify-center">
+                                        <User className="h-6 w-6 text-neutral-400" />
+                                    </div>
+                                    <span className="font-medium">Любой специалист</span>
                                 </div>
-                                <span className="font-medium">Любой специалист</span>
+                                <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${!selectedEmployee ? 'border-black' : 'border-neutral-200'}`}>
+                                    {!selectedEmployee && <div className="h-2.5 w-2.5 rounded-full bg-black" />}
+                                </div>
                             </div>
-                            <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${!selectedEmployee ? 'border-black' : 'border-neutral-200'}`}>
-                                {!selectedEmployee && <div className="h-2.5 w-2.5 rounded-full bg-black" />}
-                            </div>
-                        </div>
+                        )}
 
-                        {employees?.map((emp: any) => {
+                        {employees?.filter((emp: any) => widget?.widget_type !== 'master' || emp.id === widget.employee_id).map((emp: any) => {
                             const isCompatible = isEmployeeCompatible(emp);
                             return (
                                 <div key={emp.id} className={`space-y-3 ${!isCompatible ? 'opacity-50 pointer-events-none' : ''}`}>
