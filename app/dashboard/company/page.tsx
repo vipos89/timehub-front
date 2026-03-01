@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 export default function CompanyPage() {
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState('general');
+    const timezones = Intl.supportedValuesOf('timeZone');
     
     // Forms state
     const [companyForm, setCompanyForm] = useState<any>({
@@ -60,6 +61,15 @@ export default function CompanyPage() {
         }
     });
 
+    const [newCompanyForm, setNewCompanyForm] = useState<any>({
+        name: '',
+        country_id: undefined,
+        region_id: undefined,
+        district_id: undefined,
+        city_id: undefined,
+        address: ''
+    });
+
     const [isAddBranchOpen, setIsAddBranchOpen] = useState(false);
     const [editingBranch, setEditingBranch] = useState<any>(null);
     const [branchForm, setBranchForm] = useState<any>({
@@ -73,7 +83,8 @@ export default function CompanyPage() {
         country_id: undefined,
         region_id: undefined,
         district_id: undefined,
-        city_id: undefined
+        city_id: undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
 
     // Queries
@@ -137,12 +148,31 @@ export default function CompanyPage() {
     }, [company]);
 
     // Mutations
+    const createCompanyMutation = useMutation({
+        mutationFn: async (values: any) => {
+            const formData = {
+                ...values,
+                country_id: values.country_id ? parseInt(values.country_id) : undefined,
+                region_id: values.region_id ? parseInt(values.region_id) : undefined,
+                district_id: values.district_id ? parseInt(values.district_id) : undefined,
+                city_id: values.city_id ? parseInt(values.city_id) : undefined,
+            };
+            const response = await api.post('/companies', formData);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['my-company'] });
+            toast.success('Компания успешно создана!');
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.error || 'Ошибка при создании компании');
+        },
+    });
+
     const updateCompanyMutation = useMutation({
         mutationFn: (data: any) => {
             const payload = {
                 ...data,
-                contact_phones: JSON.stringify(data.contact_phones),
-                contact_emails: JSON.stringify(data.contact_emails),
                 social_links: JSON.stringify(data.social_links),
             };
             return api.put(`/companies/${company.id}`, payload);
@@ -154,14 +184,7 @@ export default function CompanyPage() {
     });
 
     const addBranchMutation = useMutation({
-        mutationFn: (data: any) => {
-            const payload = {
-                ...data,
-                contact_phones: JSON.stringify(data.contact_phones),
-                contact_emails: JSON.stringify(data.contact_emails),
-            };
-            return api.post(`/companies/${company.id}/branches`, payload);
-        },
+        mutationFn: (data: any) => api.post(`/companies/${company.id}/branches`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['branches'] });
             toast.success('Филиал добавлен');
@@ -171,14 +194,7 @@ export default function CompanyPage() {
     });
 
     const updateBranchMutation = useMutation({
-        mutationFn: (data: any) => {
-            const payload = {
-                ...data,
-                contact_phones: JSON.stringify(data.contact_phones),
-                contact_emails: JSON.stringify(data.contact_emails),
-            };
-            return api.put(`/branches/${data.id}`, payload);
-        },
+        mutationFn: (data: any) => api.put(`/branches/${data.id}`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['branches'] });
             toast.success('Данные филиала обновлены');
@@ -198,7 +214,8 @@ export default function CompanyPage() {
             country_id: undefined,
             region_id: undefined,
             district_id: undefined,
-            city_id: undefined
+            city_id: undefined,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         });
         setSelectedCountryId('');
         setSelectedRegionId('');
@@ -225,8 +242,8 @@ export default function CompanyPage() {
         setEditingBranch(branch);
         setBranchForm({
             ...branch,
-            contact_phones: Array.isArray(branch.contact_phones) ? branch.contact_phones : JSON.parse(branch.contact_phones || '[]'),
-            contact_emails: Array.isArray(branch.contact_emails) ? branch.contact_emails : JSON.parse(branch.contact_emails || '[]'),
+            contact_phones: Array.isArray(branch.contact_phones) ? branch.contact_phones : [],
+            contact_emails: Array.isArray(branch.contact_emails) ? branch.contact_emails : [],
         });
         if (branch.country_id) setSelectedCountryId(branch.country_id.toString());
         if (branch.region_id) setSelectedRegionId(branch.region_id.toString());
@@ -235,7 +252,118 @@ export default function CompanyPage() {
 
     if (isLoadingCompany) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900"></div></div>;
 
-    if (!company) return <div>Компания не найдена. Пожалуйста, создайте её.</div>;
+    if (!company) {
+        return (
+            <div className="max-w-2xl mx-auto mt-20 p-8 space-y-8 bg-white rounded-3xl border border-neutral-100 shadow-lg animate-in fade-in slide-in-from-bottom-8 duration-700">
+                <div className="text-center space-y-2">
+                    <div className="w-16 h-16 bg-neutral-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <Building2 className="w-8 h-8 text-neutral-900" />
+                    </div>
+                    <h1 className="text-3xl font-black tracking-tight text-neutral-900">Добро пожаловать в TimeHub!</h1>
+                    <p className="text-neutral-500 text-lg">Для начала работы давайте создадим вашу компанию.</p>
+                </div>
+
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <Label>Название компании <span className="text-red-500">*</span></Label>
+                        <Input 
+                            placeholder="Например: Барбершоп «Борода»" 
+                            className="bg-neutral-50/50"
+                            value={newCompanyForm.name}
+                            onChange={(e) => setNewCompanyForm({...newCompanyForm, name: e.target.value})}
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Страна</Label>
+                        <Select 
+                            value={selectedCountryId} 
+                            onValueChange={(val) => { 
+                                setSelectedCountryId(val); 
+                                setSelectedRegionId(''); 
+                                setSelectedDistrictId(''); 
+                                setNewCompanyForm({...newCompanyForm, country_id: val, region_id: undefined, district_id: undefined, city_id: undefined}); 
+                            }}
+                        >
+                            <SelectTrigger className="bg-neutral-50/50"><SelectValue placeholder="Выберите страну" /></SelectTrigger>
+                            <SelectContent>{countries?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+
+                    {selectedCountryId && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label>Регион / Область</Label>
+                            <Select 
+                                value={selectedRegionId} 
+                                onValueChange={(val) => { 
+                                    setSelectedRegionId(val); 
+                                    setSelectedDistrictId(''); 
+                                    setNewCompanyForm({...newCompanyForm, region_id: val, district_id: undefined, city_id: undefined}); 
+                                }}
+                            >
+                                <SelectTrigger className="bg-neutral-50/50"><SelectValue placeholder="Выберите регион" /></SelectTrigger>
+                                <SelectContent>{regions?.map((r: any) => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {selectedRegionId && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label>Район (опционально)</Label>
+                            <Select 
+                                value={selectedDistrictId || "none"} 
+                                onValueChange={(val) => { 
+                                    const districtId = val === "none" ? undefined : val;
+                                    setSelectedDistrictId(districtId || ''); 
+                                    setNewCompanyForm({...newCompanyForm, district_id: districtId}); 
+                                }}
+                            >
+                                <SelectTrigger className="bg-neutral-50/50"><SelectValue placeholder="Выберите район" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Нет района / Не указан</SelectItem>
+                                    {districts?.map((d: any) => <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {selectedCountryId && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label>Город</Label>
+                            <Select 
+                                value={newCompanyForm.city_id?.toString() || ''} 
+                                onValueChange={(val) => setNewCompanyForm({...newCompanyForm, city_id: val})}
+                            >
+                                <SelectTrigger className="bg-neutral-50/50"><SelectValue placeholder="Выберите город" /></SelectTrigger>
+                                <SelectContent>{cities?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    <div className="space-y-2">
+                        <Label>Юридический или физический адрес</Label>
+                        <Input 
+                            placeholder="ул. Пушкина, д. Колотушкина" 
+                            className="bg-neutral-50/50"
+                            value={newCompanyForm.address}
+                            onChange={(e) => setNewCompanyForm({...newCompanyForm, address: e.target.value})}
+                        />
+                    </div>
+                </div>
+
+                <div className="pt-6">
+                    <Button 
+                        size="lg" 
+                        className="w-full bg-neutral-900 text-white hover:bg-neutral-800 rounded-xl h-14 text-lg shadow-md transition-all font-semibold"
+                        disabled={!newCompanyForm.name || createCompanyMutation.isPending}
+                        onClick={() => createCompanyMutation.mutate(newCompanyForm)}
+                    >
+                        {createCompanyMutation.isPending ? 'Создание...' : 'Создать компанию'}
+                    </Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -471,6 +599,20 @@ export default function CompanyPage() {
                                                         <Label className="text-neutral-600 font-normal">Адрес (улица, дом)</Label>
                                                         <Input value={branchForm.address} onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })} className="h-11 rounded-xl border-neutral-200" placeholder="ул. Ленина, д. 10, оф. 5" />
                                                     </div>
+
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-neutral-600 font-normal">Часовой пояс</Label>
+                                                        <Select value={branchForm.timezone} onValueChange={(val) => setBranchForm({ ...branchForm, timezone: val })}>
+                                                            <SelectTrigger className="h-11 rounded-xl border-neutral-200">
+                                                                <SelectValue placeholder="Выберите часовой пояс" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {timezones.map((tz) => (
+                                                                    <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div className="p-8 bg-neutral-50 border-t border-neutral-100 flex justify-end gap-3">
@@ -503,11 +645,9 @@ export default function CompanyPage() {
                                                             <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-400">
                                                                 <Phone className="h-3.5 w-3.5" /> {branch.phone || 'Нет телефона'}
                                                             </div>
-                                                            {JSON.parse(branch.contact_phones || '[]').length > 0 && (
-                                                                <div className="text-[10px] font-bold text-neutral-300 uppercase tracking-widest">
-                                                                    + {JSON.parse(branch.contact_phones || '[]').length} доп.
-                                                                </div>
-                                                            )}
+                                                            <div className="flex items-center gap-1.5 text-xs font-bold text-neutral-400">
+                                                                <Users className="h-3.5 w-3.5" /> {branch.employees?.length || 0} сотрудников
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -711,9 +851,18 @@ export default function CompanyPage() {
                                             </Select>
                                         </div>
                                     </div>
-                                    <div className="grid gap-2">
-                                        <Label className="text-neutral-600 font-bold text-[11px] uppercase tracking-wider">Адрес</Label>
-                                        <Input value={branchForm.address} onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })} className="h-11 rounded-xl border-neutral-200" />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <Label className="text-neutral-600 font-bold text-[11px] uppercase tracking-wider">Адрес</Label>
+                                            <Input value={branchForm.address} onChange={(e) => setBranchForm({ ...branchForm, address: e.target.value })} className="h-11 rounded-xl border-neutral-200" />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label className="text-neutral-600 font-bold text-[11px] uppercase tracking-wider">Часовой пояс</Label>
+                                            <Select value={branchForm.timezone} onValueChange={(val) => setBranchForm({ ...branchForm, timezone: val })}>
+                                                <SelectTrigger className="h-11 rounded-xl border-neutral-200"><SelectValue /></SelectTrigger>
+                                                <SelectContent>{timezones.map((tz) => (<SelectItem key={tz} value={tz}>{tz}</SelectItem>))}</SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
                                 </section>
 
