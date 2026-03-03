@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DateTime } from 'luxon';
@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { BookingEditor } from '@/components/appointments/BookingEditor';
+import { useWebSocket } from '@/hooks/use-web-socket';
 
 const TIME_SLOTS_START = 8;
 const TIME_SLOTS_END = 22;
@@ -21,6 +22,27 @@ export default function AppointmentsPage() {
     const { selectedBranchID, branches } = useBranch();
     const [currentDate, setCurrentDate] = useState(DateTime.now());
     const queryClient = useQueryClient();
+
+    // WebSocket connection for real-time updates
+    useWebSocket('ws://localhost:8080/ws', {
+        onMessage: (event) => {
+            try {
+                // The message is double-stringified, once by the publisher and once by the consumer forwarding it.
+                const outerData = JSON.parse(event.data);
+                const message = JSON.parse(outerData);
+
+                if (message.action === 'created' || message.action === 'updated' || message.action === 'status_updated') {
+                    console.log('Real-time update received:', message);
+                    toast.info('Журнал записей обновлен в реальном времени.');
+                    // Invalidate queries to refetch data
+                    queryClient.invalidateQueries({ queryKey: ['appointments'] });
+                    queryClient.invalidateQueries({ queryKey: ['shifts'] }); // Also refetch shifts in case of new bookings
+                }
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error);
+            }
+        },
+    });
 
     // Modal State
     const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -173,7 +195,7 @@ export default function AppointmentsPage() {
 
         const startMinutes = (startHour - TIME_SLOTS_START) * 60 + startMinute;
         const durationMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
-        
+
         const PIXELS_PER_MINUTE = 2;
 
         return {
@@ -369,7 +391,7 @@ export default function AppointmentsPage() {
                                     ?.filter((app: any) => app.employee_id === emp.id && app.status !== 'cancelled')
                                     .map((app: any) => {
                                         const customer = customerMap[app.client_id];
-                                        
+
                                         // Get service names from the services array
                                         const serviceNames = app.services?.map((s: any) => 
                                             s.service?.name || serviceMap[s.service_id]
