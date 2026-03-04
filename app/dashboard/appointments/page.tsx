@@ -113,34 +113,56 @@ export default function AppointmentsPage() {
 
     // 1. Dynamic Time Range Calculation
     const timeRange = useMemo(() => {
-        let start = 8;
-        let end = 22;
+        let minStart = 24;
+        let maxEnd = 0;
 
-        // Check shifts
+        // 1. Check Branch Schedule for the current day
+        if (currentBranch && (currentBranch as any).schedule) {
+            const dayOfWeek = currentDate.weekday % 7; // Luxon: 1=Mon...7=Sun. DB: 0=Sun...6=Sat
+            const branchDay = (currentBranch as any).schedule.find((s: any) => s.day_of_week === dayOfWeek);
+            
+            if (branchDay && !branchDay.is_day_off) {
+                const [sH] = branchDay.start_time.split(':').map(Number);
+                const [eH, eM] = branchDay.end_time.split(':').map(Number);
+                if (sH < minStart) minStart = sH;
+                const finalEH = eM > 0 ? eH + 1 : eH;
+                if (finalEH > maxEnd) maxEnd = finalEH;
+            }
+        }
+
+        // 2. Check individual employee shifts
         if (shifts && shifts.length > 0) {
             shifts.forEach((s: any) => {
-                if (!s.start_time || s.shift_type !== 'work') return;
+                if (!s.start_time || s.shift_type === 'off') return;
                 const [sH] = s.start_time.split(':').map(Number);
                 const [eH, eM] = s.end_time.split(':').map(Number);
-                if (sH < start) start = sH;
+                if (sH < minStart) minStart = sH;
                 const finalEH = eM > 0 ? eH + 1 : eH;
-                if (finalEH > end) end = finalEH;
+                if (finalEH > maxEnd) maxEnd = finalEH;
             });
         }
 
-        // Also check actual appointments
+        // 3. Check actual appointments (just in case they are outside shifts)
         if (appointments && appointments.length > 0) {
             appointments.forEach((app: any) => {
                 const appStart = DateTime.fromISO(app.start_time).setZone(timezone);
                 const appEnd = DateTime.fromISO(app.end_time).setZone(timezone);
-                if (appStart.hour < start) start = appStart.hour;
+                if (appStart.hour < minStart) minStart = appStart.hour;
                 const finalAppEH = appEnd.minute > 0 ? appEnd.hour + 1 : appEnd.hour;
-                if (finalAppEH > end) end = finalAppEH;
+                if (finalAppEH > maxEnd) maxEnd = finalAppEH;
             });
         }
 
-        return { start: Math.max(0, start), end: Math.min(24, end) };
-    }, [shifts, appointments, timezone]);
+        // Fallback if no data
+        if (minStart === 24) minStart = 9;
+        if (maxEnd === 0) maxEnd = 21;
+
+        // Padding
+        const start = Math.max(0, minStart - 1);
+        const end = Math.min(24, maxEnd + 1);
+
+        return { start, end };
+    }, [shifts, appointments, timezone, currentBranch, currentDate]);
 
     const TIME_SLOTS_START = timeRange.start;
     const TIME_SLOTS_END = timeRange.end;
@@ -186,6 +208,43 @@ export default function AppointmentsPage() {
                 <div className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-r-md shadow-sm">{now.toFormat('HH:mm')}</div>
             </div>
         );
+    };
+
+    const getEmployeeShiftRange = (empId: number) => {
+        const shift = shifts.find((s: any) => s.employee_id === empId && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+        if (shift && shift.start_time && shift.end_time && shift.shift_type !== 'off' && !shift.is_day_off) {
+            const [sH, sM] = shift.start_time.split(':').map(Number);
+            const [eH, eM] = shift.end_time.split(':').map(Number);
+            return { start: sH + sM / 60, end: eH + eM / 60 };
+        }
+        if (!shift && currentBranch && (currentBranch as any).schedule) {
+            const dayOfWeek = currentDate.weekday % 7;
+            const branchDay = (currentBranch as any).schedule.find((s: any) => s.day_of_week === dayOfWeek);
+            if (branchDay && !branchDay.is_day_off) {
+                const [sH, sM] = branchDay.start_time.split(':').map(Number);
+                const [eH, eM] = branchDay.end_time.split(':').map(Number);
+                return { start: sH + sM / 60, end: eH + eM / 60 };
+            }
+        }
+        return null;
+    };
+
+    const renderNonWorkingHours = (empId: number) => {
+        const range = getEmployeeShiftRange(empId);
+        const zebraStyle = "bg-[repeating-linear-gradient(45deg,#f5f5f5,#f5f5f5_10px,#e5e5e5_10px,#e5e5e5_20px)] opacity-60";
+        
+        if (!range) {
+            return <div className={`absolute left-0 right-0 z-10 pointer-events-none ${zebraStyle}`} style={{ top: 0, bottom: 0 }} />;
+        }
+        
+        const blocks = [];
+        if (range.start > TIME_SLOTS_START) {
+            blocks.push(<div key="top" className={`absolute left-0 right-0 z-10 pointer-events-none ${zebraStyle}`} style={{ top: 0, height: `${(range.start - TIME_SLOTS_START) * HOUR_HEIGHT}px` }} />);
+        }
+        if (range.end < TIME_SLOTS_END) {
+            blocks.push(<div key="bottom" className={`absolute left-0 right-0 z-10 pointer-events-none ${zebraStyle}`} style={{ top: `${(range.end - TIME_SLOTS_START) * HOUR_HEIGHT}px`, bottom: 0 }} />);
+        }
+        return blocks;
     };
 
     return (
@@ -235,6 +294,7 @@ export default function AppointmentsPage() {
                                          }
                                      }}>
                                     
+                                    {renderNonWorkingHours(emp.id)}
                                     <CurrentTimeMarker />
 
                                     {appointments.filter((a: any) => a.employee_id === emp.id).map((app: any) => (
@@ -257,7 +317,7 @@ export default function AppointmentsPage() {
                 </div>
             </div>
 
-            <BookingEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} mode={editorMode} company={company} branchId={Number(selectedBranchID)} selectedSlot={selectedSlot} selectedAppointment={selectedAppointment} employees={employees} allServices={allServices} employeeServices={employeeServices} categories={categories} customers={customers} appointments={appointments} onSave={handleSaveBooking} isSaving={false} />
+            <BookingEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} mode={editorMode} company={company} branchId={Number(selectedBranchID)} selectedSlot={selectedSlot} selectedAppointment={selectedAppointment} employees={employees} allServices={allServices} employeeServices={employeeServices} categories={categories} customers={customers} appointments={appointments} shifts={shifts} onSave={handleSaveBooking} isSaving={false} />
         </div>
     );
 }

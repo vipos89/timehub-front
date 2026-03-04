@@ -49,6 +49,7 @@ export interface BookingEditorProps {
     categories: any[];
     customers: any[];
     appointments?: any[];
+    shifts?: any[];
     onSave: (data: any) => Promise<void>;
     onDelete?: (id: number) => Promise<void>;
     isSaving: boolean;
@@ -68,6 +69,7 @@ export function BookingEditor({
     categories,
     customers: initialCustomers,
     appointments = [],
+    shifts,
     onSave,
     onDelete,
     isSaving
@@ -98,7 +100,7 @@ export function BookingEditor({
     const [showClientDropdown, setShowClientDropdown] = useState(false);
     const [activeSearchField, setActiveSearchField] = useState<'name' | 'phone' | null>(null);
     const [selectedCustomerStats, setSelectedCustomerStats] = useState<{total_visits: number, no_shows: number} | null>(null);
-    const [showOverbookingWarning, setShowOverbookingWarning] = useState(false);
+    const [warningType, setWarningType] = useState<'overbooking' | 'out_of_shift' | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -237,7 +239,7 @@ export function BookingEditor({
         };
 
         await onSave(payload);
-        setShowOverbookingWarning(false);
+        setWarningType(null);
     };
 
     const handleSave = () => {
@@ -247,6 +249,7 @@ export function BookingEditor({
             if (startStr && endStr) {
                 const newStartVal = parseInt(startStr.replace(':', ''), 10);
                 const newEndVal = parseInt(endStr.replace(':', ''), 10);
+                
                 const hasOverlap = appointments.some(app => {
                     if (app.employee_id !== master.id || app.status === 'cancelled') return false;
                     if (mode === 'edit' && selectedAppointment && app.id === selectedAppointment.id) return false;
@@ -256,7 +259,52 @@ export function BookingEditor({
                     const exEndVal = parseInt(appEnd, 10);
                     return newStartVal < exEndVal && newEndVal > exStartVal;
                 });
-                if (hasOverlap) { setShowOverbookingWarning(true); return; }
+                
+                if (hasOverlap) { 
+                    setWarningType('overbooking'); 
+                    return; 
+                }
+
+                if (shifts) {
+                    const shiftDate = formData.bookingDate.toISODate();
+                    const shift = shifts.find((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
+                    
+                    let hasWorkingHours = false;
+                    let shiftStartH = 0, shiftStartM = 0;
+                    let shiftEndH = 24, shiftEndM = 0;
+
+                    if (shift && shift.start_time && shift.end_time && shift.shift_type !== 'off' && !shift.is_day_off) {
+                        [shiftStartH, shiftStartM] = shift.start_time.split(':').map(Number);
+                        [shiftEndH, shiftEndM] = shift.end_time.split(':').map(Number);
+                        hasWorkingHours = true;
+                    } else if (!shift && currentBranch && (currentBranch as any).schedule) {
+                        const dayOfWeek = formData.bookingDate.weekday % 7;
+                        const branchDay = (currentBranch as any).schedule.find((s: any) => s.day_of_week === dayOfWeek);
+                        if (branchDay && !branchDay.is_day_off) {
+                            [shiftStartH, shiftStartM] = branchDay.start_time.split(':').map(Number);
+                            [shiftEndH, shiftEndM] = branchDay.end_time.split(':').map(Number);
+                            hasWorkingHours = true;
+                        }
+                    }
+
+                    if (!hasWorkingHours) {
+                        setWarningType('out_of_shift');
+                        return;
+                    } else {
+                        const [reqStartH, reqStartM] = startStr.split(':').map(Number);
+                        const [reqEndH, reqEndM] = endStr.split(':').map(Number);
+                        
+                        const reqStartTotal = reqStartH * 60 + reqStartM;
+                        const reqEndTotal = reqEndH * 60 + reqEndM;
+                        const shiftStartTotal = shiftStartH * 60 + shiftStartM;
+                        const shiftEndTotal = shiftEndH * 60 + shiftEndM;
+                        
+                        if (reqStartTotal < shiftStartTotal || reqEndTotal > shiftEndTotal) {
+                            setWarningType('out_of_shift');
+                            return;
+                        }
+                    }
+                }
             }
         }
         executeSave(false);
@@ -414,10 +462,27 @@ export function BookingEditor({
             </DialogContent>
         </Dialog>
 
-        <Dialog open={showOverbookingWarning} onOpenChange={setShowOverbookingWarning}>
+        <Dialog open={warningType !== null} onOpenChange={(open) => !open && setWarningType(null)}>
             <DialogContent className="max-w-md p-0 overflow-hidden border-none bg-white rounded-[2rem] shadow-2xl shadow-black/20">
-                <div className="p-8 space-y-6 text-center"><div className="mx-auto w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center animate-bounce"><AlertCircle className="w-10 h-10 text-amber-500" /></div><div className="space-y-2"><DialogTitle className="text-2xl font-black text-neutral-900">Пересечение времени</DialogTitle><DialogDescription className="text-sm font-medium text-neutral-500 leading-relaxed px-4">На это время уже есть запись. Создать овербукинг?</DialogDescription></div></div>
-                <div className="bg-neutral-50/50 p-6 flex gap-3 sm:justify-center"><Button variant="ghost" onClick={() => setShowOverbookingWarning(false)} className="flex-1 h-12 rounded-xl font-bold hover:bg-neutral-100">Отмена</Button><Button onClick={() => executeSave(true)} disabled={isSaving} className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold">Да, создать</Button></div>
+                <div className="p-8 space-y-6 text-center">
+                    <div className="mx-auto w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center animate-bounce">
+                        <AlertCircle className="w-10 h-10 text-amber-500" />
+                    </div>
+                    <div className="space-y-2">
+                        <DialogTitle className="text-2xl font-black text-neutral-900">
+                            {warningType === 'overbooking' ? 'Пересечение времени' : 'Вне рабочего времени'}
+                        </DialogTitle>
+                        <DialogDescription className="text-sm font-medium text-neutral-500 leading-relaxed px-4">
+                            {warningType === 'overbooking' 
+                                ? 'На это время уже есть запись. Создать овербукинг?' 
+                                : 'Выбранное время выходит за рамки графика работы мастера. Продолжить создание записи?'}
+                        </DialogDescription>
+                    </div>
+                </div>
+                <div className="bg-neutral-50/50 p-6 flex gap-3 sm:justify-center">
+                    <Button variant="ghost" onClick={() => setWarningType(null)} className="flex-1 h-12 rounded-xl font-bold hover:bg-neutral-100">Отмена</Button>
+                    <Button onClick={() => executeSave(warningType === 'overbooking')} disabled={isSaving} className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold">Да, создать</Button>
+                </div>
             </DialogContent>
         </Dialog>
         </>
