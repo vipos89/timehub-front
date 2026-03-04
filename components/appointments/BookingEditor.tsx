@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { DateTime } from 'luxon';
 import { 
     CalendarIcon, 
@@ -15,9 +15,15 @@ import {
     Smartphone,
     AlertCircle,
     Trash2,
-    Calendar as CalendarIcon2
+    Calendar as CalendarIcon2,
+    ChevronDown,
+    ChevronUp,
+    Eye,
+    EyeOff,
+    History,
+    UserX
 } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,8 +32,11 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export interface BookingEditorProps {
     isOpen: boolean;
@@ -40,7 +49,9 @@ export interface BookingEditorProps {
     employees: any[];
     allServices: any[];
     employeeServices: any[];
+    categories: any[];
     customers: any[];
+    appointments?: any[];
     onSave: (data: any) => Promise<void>;
     onDelete?: (id: number) => Promise<void>;
     isSaving: boolean;
@@ -57,12 +68,15 @@ export function BookingEditor({
     employees,
     allServices,
     employeeServices,
-    customers,
+    categories,
+    customers: initialCustomers,
+    appointments = [],
     onSave,
     onDelete,
     isSaving
 }: BookingEditorProps) {
     const [formData, setFormData] = useState({
+        bookingDate: DateTime.now() as DateTime<true>,
         clientName: '',
         clientPhone: '',
         clientEmail: '',
@@ -74,20 +88,53 @@ export function BookingEditor({
         payments: [] as any[],
         totalPrice: 0,
         isGuest: false,
+        clientID: null as number | null,
     });
 
     const [searchService, setSearchService] = useState('');
-    const [searchClient, setSearchClient] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearchingClient, setIsSearchingClient] = useState(false);
     const [showClientDropdown, setShowClientDropdown] = useState(false);
+    const [activeSearchField, setActiveSearchField] = useState<'name' | 'phone' | null>(null);
+    const [selectedCustomerStats, setSelectedCustomerStats] = useState<{total_visits: number, no_shows: number} | null>(null);
+    const [showOverbookingWarning, setShowOverbookingWarning] = useState(false);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.client-search-container')) {
+                setShowClientDropdown(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Collapsible logic for services
+    const [collapsedCategories, setCollapsedCategories] = useState<Record<number, boolean>>({});
+    const [showAvailableServices, setShowAvailableServices] = useState(true);
 
     const master = useMemo(() => {
         const empID = mode === 'create' ? selectedSlot?.empID : selectedAppointment?.employee_id;
         return employees?.find(e => e.id === empID) || null;
     }, [mode, selectedSlot, selectedAppointment, employees]);
 
-    const totalDuration = useMemo(() => {
-        return formData.selectedServices.reduce((acc, s) => acc + (s.duration_minutes || s.duration || 0), 0);
+    const suggestedDuration = useMemo(() => {
+        return formData.selectedServices.reduce((acc, s) => acc + (s.duration_minutes || s.duration || s.service?.duration_minutes || s.service?.duration || 0), 0);
     }, [formData.selectedServices]);
+
+    const actualDuration = useMemo(() => {
+        if (!formData.startTime || !formData.endTime) return 0;
+        try {
+            const start = DateTime.fromFormat(formData.startTime, 'HH:mm');
+            const end = DateTime.fromFormat(formData.endTime, 'HH:mm');
+            const diff = end.diff(start, 'minutes').minutes;
+            return diff > 0 ? diff : 0;
+        } catch (e) {
+            return 0;
+        }
+    }, [formData.startTime, formData.endTime]);
 
     const totalPaid = useMemo(() => {
         return formData.payments.reduce((sum, p) => sum + (p.amount || 0), 0);
@@ -95,11 +142,23 @@ export function BookingEditor({
 
     const remainingToPay = formData.totalPrice - totalPaid;
 
+    // Load stats for customer
+    const fetchCustomerStats = async (customerId: number) => {
+        try {
+            const res = await api.get(`/customers/${customerId}/stats`);
+            setSelectedCustomerStats(res.data);
+        } catch (err) {
+            console.error('Failed to fetch stats:', err);
+            setSelectedCustomerStats(null);
+        }
+    };
+
     // Load or reset data
     useEffect(() => {
         if (isOpen) {
             if (mode === 'create' && selectedSlot) {
                 setFormData({
+                    bookingDate: selectedSlot.time as DateTime<true>,
                     clientName: '',
                     clientPhone: '',
                     clientEmail: '',
@@ -111,13 +170,17 @@ export function BookingEditor({
                     payments: [],
                     totalPrice: 0,
                     isGuest: false,
+                    clientID: null,
                 });
+                setSelectedCustomerStats(null);
+                setActiveSearchField(null);
             } else if (mode === 'edit' && selectedAppointment) {
-                const customer = customers?.find(c => c.id === selectedAppointment.client_id);
+                const bookingDate = DateTime.fromISO(selectedAppointment.start_time) as DateTime<true>;
                 setFormData({
-                    clientName: selectedAppointment.client_first_name || customer?.first_name || '',
-                    clientPhone: selectedAppointment.client_phone || customer?.phone || '',
-                    clientEmail: customer?.email || '',
+                    bookingDate: bookingDate,
+                    clientName: `${selectedAppointment.client_first_name || ''} ${selectedAppointment.client_last_name || ''}`.trim(),
+                    clientPhone: selectedAppointment.client_phone || '',
+                    clientEmail: '',
                     comment: selectedAppointment.comment || '',
                     status: selectedAppointment.status,
                     startTime: selectedAppointment.start_time.slice(11, 16),
@@ -131,37 +194,112 @@ export function BookingEditor({
                     payments: selectedAppointment.payments || [],
                     totalPrice: selectedAppointment.total_price || 0,
                     isGuest: selectedAppointment.client_phone === 'ANONYMOUS' || selectedAppointment.client_phone === '' || selectedAppointment.client_phone === 'guest',
+                    clientID: selectedAppointment.client_id || null,
                 });
+                setActiveSearchField(null);
+                if (selectedAppointment.client_id) {
+                    fetchCustomerStats(selectedAppointment.client_id);
+                }
             }
         }
-    }, [isOpen, mode, selectedSlot, selectedAppointment, customers, allServices]);
+    }, [isOpen, mode, selectedSlot, selectedAppointment, allServices]);
 
     // Duration & Price sync
     useEffect(() => {
         const price = formData.selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
-        if (formData.startTime) {
-            const start = DateTime.fromFormat(formData.startTime, 'HH:mm');
-            const end = start.plus({ minutes: totalDuration || 60 });
-            setFormData(prev => ({ 
-                ...prev, 
-                endTime: end.toFormat('HH:mm'),
-                totalPrice: price 
-            }));
-        }
-    }, [formData.selectedServices, formData.startTime, totalDuration]);
-
-    const handleSave = () => {
-        if (formData.selectedServices.length === 0) {
-            toast.error('Выберите хотя бы одну услугу');
-            return;
-        }
+        const duration = formData.selectedServices.reduce((acc, s) => acc + (s.duration_minutes || s.duration || s.service?.duration_minutes || s.service?.duration || 0), 0);
         
-        // If client name is missing, use a placeholder
+        setFormData(prev => {
+            const newState = { ...prev, totalPrice: price };
+            if (prev.startTime && duration > 0) {
+                const start = DateTime.fromFormat(prev.startTime, 'HH:mm');
+                newState.endTime = start.plus({ minutes: duration }).toFormat('HH:mm');
+            }
+            return newState;
+        });
+    }, [formData.selectedServices]);
+
+    // Server-side client search
+    useEffect(() => {
+        const timer = setTimeout(async () => {
+            if (!activeSearchField) return;
+            const query = activeSearchField === 'name' ? formData.clientName : formData.clientPhone;
+            
+            if (query.length >= 2) {
+                setIsSearchingClient(true);
+                try {
+                    const res = await api.get('/customers', {
+                        params: { 
+                            branch_id: branchId,
+                            search: query
+                        }
+                    });
+                    setSearchResults(res.data || []);
+                } catch (err) {
+                    console.error('Search error:', err);
+                } finally {
+                    setIsSearchingClient(false);
+                }
+            } else {
+                setSearchResults([]);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [formData.clientName, formData.clientPhone, branchId, activeSearchField]);
+
+    const handleSelectCustomer = (c: any) => {
+        setFormData({
+            ...formData,
+            clientName: `${c.first_name} ${c.last_name || ''}`.trim(),
+            clientPhone: c.phone || '',
+            clientEmail: c.email || '',
+            clientID: c.id || null,
+        });
+        setSearchResults([]);
+        setShowClientDropdown(false);
+        setActiveSearchField(null);
+        if (c.id) fetchCustomerStats(c.id);
+    };
+
+    const executeSave = async () => {
         const dataToSave = {
             ...formData,
             clientName: formData.clientName || 'Без имени',
         };
-        onSave(dataToSave);
+        await onSave(dataToSave);
+        setShowOverbookingWarning(false);
+    };
+
+    const handleSave = () => {
+        if (master) {
+            const startStr = formData.startTime;
+            const endStr = formData.endTime;
+            if (startStr && endStr) {
+                const newStartVal = parseInt(startStr.replace(':', ''), 10);
+                const newEndVal = parseInt(endStr.replace(':', ''), 10);
+
+                const hasOverlap = appointments.some(app => {
+                    if (app.employee_id !== master.id) return false;
+                    if (app.status === 'cancelled') return false;
+                    if (mode === 'edit' && selectedAppointment && app.id === selectedAppointment.id) return false;
+
+                    const appStart = app.start_time.slice(11, 16);
+                    const appEnd = app.end_time.slice(11, 16);
+                    
+                    const exStartVal = parseInt(appStart.replace(':', ''), 10);
+                    const exEndVal = parseInt(appEnd.replace(':', ''), 10);
+
+                    return newStartVal < exEndVal && newEndVal > exStartVal;
+                });
+
+                if (hasOverlap) {
+                    setShowOverbookingWarning(true);
+                    return;
+                }
+            }
+        }
+        executeSave();
     };
 
     const filteredServices = useMemo(() => {
@@ -176,17 +314,68 @@ export function BookingEditor({
             }));
     }, [searchService, employeeServices, allServices, mode]);
 
-    const filteredCustomers = useMemo(() => {
-        if (!searchClient) return [];
-        const query = searchClient.toLowerCase();
-        return (customers || []).filter(c => 
-            (c.first_name || '').toLowerCase().includes(query) ||
-            (c.last_name || '').toLowerCase().includes(query) ||
-            (c.phone || '').toLowerCase().includes(query)
+    const categorizedServices = useMemo(() => {
+        const source = (mode === 'create' ? employeeServices : allServices) || [];
+        const groups: Record<number | string, any[]> = {};
+
+        source.forEach((s: any) => {
+            const serviceItem = s.service || s;
+            const catId = serviceItem.category_id || 'uncategorized';
+            if (!groups[catId]) groups[catId] = [];
+            groups[catId].push({
+                service_id: s.service_id || s.id,
+                price: s.price,
+                duration_minutes: s.duration_minutes || s.duration,
+                service: serviceItem
+            });
+        });
+
+        return Object.entries(groups).map(([id, items]) => ({
+            id: id === 'uncategorized' ? 0 : Number(id),
+            name: categories?.find(c => c.id === Number(id))?.name || 'Без категории',
+            services: items
+        }));
+    }, [employeeServices, allServices, mode, categories]);
+
+    const toggleCategory = (id: number) => {
+        setCollapsedCategories(prev => ({...prev, [id]: !prev[id]}));
+    };
+
+    const ClientDropdown = ({ field }: { field: 'name' | 'phone' }) => {
+        if (!showClientDropdown || activeSearchField !== field || (searchResults.length === 0 && !isSearchingClient)) return null;
+
+        return (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-neutral-100 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                {isSearchingClient ? (
+                    <div className="p-4 text-center text-xs font-bold text-neutral-400 uppercase tracking-widest">Поиск...</div>
+                ) : (
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                        {searchResults.map((c, i) => (
+                            <div 
+                                key={i} 
+                                onClick={() => handleSelectCustomer(c)}
+                                className="p-4 border-b border-neutral-50 hover:bg-neutral-50 cursor-pointer flex items-center justify-between group transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center text-white text-xs font-black">
+                                        {c.first_name?.[0]}{c.last_name?.[0]}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-neutral-900 group-hover:text-black">{c.first_name} {c.last_name}</span>
+                                        <span className="text-[10px] font-black text-neutral-400">{c.phone}</span>
+                                    </div>
+                                </div>
+                                <ChevronRight className="h-4 w-4 text-neutral-200 group-hover:text-neutral-900 transition-all group-hover:translate-x-1" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         );
-    }, [searchClient, customers]);
+    };
 
     return (
+        <>
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent showCloseButton={false} className="sm:max-w-[1400px] w-[98vw] p-0 overflow-hidden bg-white rounded-[1.5rem] border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)] h-[92vh] flex flex-col">
                 {/* Header: Status & Actions */}
@@ -220,7 +409,7 @@ export function BookingEditor({
                 </div>
 
                 <div className="flex-1 grid grid-cols-[320px_1fr_320px] overflow-hidden">
-                    {/* Column 1: Client & Basic Info */}
+                    {/* Column 1: Basic Info & Master */}
                     <div className="border-r border-neutral-100 p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
                         <div className="space-y-6">
                             <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em] px-1">Основные данные</h4>
@@ -231,14 +420,29 @@ export function BookingEditor({
                                 </Avatar>
                                 <div className="min-w-0">
                                     <h3 className="font-bold text-sm leading-tight text-neutral-900 truncate">{master?.name}</h3>
-                                    <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mt-0.5 truncate">{master?.position || 'Специлаист'}</p>
+                                    <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider mt-0.5 truncate">{master?.position || 'Специалист'}</p>
                                 </div>
                             </div>
                             
                             <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-4">
                                 <div className="flex items-center gap-3 text-xs font-bold text-neutral-900">
-                                    <div className="p-2 bg-white rounded-xl shadow-sm border border-neutral-100"><CalendarIcon2 className="h-4 w-4 text-neutral-400" /></div>
-                                    {selectedSlot?.time.setLocale('ru').toFormat('d MMMM, cccc') || 'Выбранная дата'}
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="ghost" className="p-0 h-auto hover:bg-transparent flex items-center gap-3 text-xs font-bold text-neutral-900 w-full justify-start">
+                                                <div className="p-2 bg-white rounded-xl shadow-sm border border-neutral-100"><CalendarIcon2 className="h-4 w-4 text-neutral-400" /></div>
+                                                {formData.bookingDate.setLocale('ru').toFormat('d MMMM, cccc')}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0 rounded-[1.5rem] border-none shadow-2xl" align="start">
+                                            <Calendar
+                                                mode="single"
+                                                selected={formData.bookingDate.toJSDate()}
+                                                onSelect={(date) => date && setFormData({ ...formData, bookingDate: DateTime.fromJSDate(date) as any })}
+                                                initialFocus
+                                                className="p-4"
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 flex flex-col min-w-0">
@@ -251,67 +455,9 @@ export function BookingEditor({
                                     <div className="flex-1 flex flex-col min-w-0">
                                         <Label className="text-[9px] font-black uppercase text-neutral-400 mb-2 pl-1">Уход</Label>
                                         <div className="relative">
-                                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-200" />
-                                            <Input value={formData.endTime} readOnly className="pl-9 h-11 font-black border-none bg-neutral-100/50 rounded-2xl text-neutral-300 text-xs" />
+                                            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                            <Input value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="pl-9 h-11 font-black border-none bg-white rounded-2xl shadow-sm text-xs" />
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-6">
-                            <div className="flex items-center justify-between px-1">
-                                <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em]">Клиент</h4>
-                                {formData.isGuest && <Badge className="bg-neutral-100 text-neutral-400 border-none text-[9px] font-black uppercase">Гость</Badge>}
-                            </div>
-                            <div className="space-y-4">
-                                <div className="space-y-2 relative">
-                                    <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">ФИО / Поиск</Label>
-                                    <div className="relative">
-                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
-                                        <Input 
-                                            value={formData.clientName || searchClient} 
-                                            onChange={e => {
-                                                const val = e.target.value;
-                                                setSearchClient(val);
-                                                setFormData({...formData, clientName: val});
-                                                setShowClientDropdown(true);
-                                            }} 
-                                            onFocus={() => setShowClientDropdown(true)}
-                                            placeholder="Введите имя или выберите..." 
-                                            className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-0 text-sm font-bold shadow-sm" 
-                                        />
-                                        {showClientDropdown && filteredCustomers.length > 0 && (
-                                            <div className="absolute top-14 left-0 right-0 z-20 bg-white rounded-3xl border border-neutral-100 shadow-2xl overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                {filteredCustomers.map((c, i) => (
-                                                    <div key={i} onClick={() => {
-                                                        setFormData({
-                                                            ...formData,
-                                                            clientName: `${c.first_name} ${c.last_name || ''}`.trim(),
-                                                            clientPhone: c.phone || '',
-                                                            clientEmail: c.email || '',
-                                                        });
-                                                        setSearchClient('');
-                                                        setShowClientDropdown(false);
-                                                    }} className="px-5 py-3 hover:bg-neutral-50 cursor-pointer flex items-center gap-4 transition-colors">
-                                                        <Avatar className="h-8 w-8 shrink-0">
-                                                            <AvatarFallback className="bg-neutral-200 text-neutral-500 text-[10px] font-bold">{c.first_name?.[0]}</AvatarFallback>
-                                                        </Avatar>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-sm font-bold text-neutral-800">{c.first_name} {c.last_name}</span>
-                                                            <span className="text-[10px] text-neutral-400 font-bold">{c.phone}</span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">Телефон</Label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
-                                        <Input value={formData.clientPhone} onChange={e => setFormData({...formData, clientPhone: e.target.value})} placeholder="+375 •• •••-••-••" className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-0 text-sm font-bold shadow-sm" />
                                     </div>
                                 </div>
                             </div>
@@ -323,155 +469,269 @@ export function BookingEditor({
                         </div>
                     </div>
 
-                    {/* Column 2: Services */}
-                    <div className="border-r border-neutral-100 p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar bg-neutral-50/30">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-black tracking-tight text-neutral-900">Услуги</h3>
-                                <p className="text-[10px] text-neutral-400 font-black uppercase tracking-widest mt-1">Выбор и настройка</p>
-                            </div>
-                            <div className="flex gap-2">
-                                <Badge className="bg-white text-neutral-900 border-neutral-100 shadow-sm px-3 py-1.5 rounded-xl text-[10px] font-black uppercase">{totalDuration} мин</Badge>
-                                <Badge className="bg-neutral-900 text-white border-none shadow-sm px-3 py-1.5 rounded-xl text-[10px] font-black uppercase">{formData.selectedServices.length}</Badge>
-                            </div>
-                        </div>
-
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-neutral-300" />
-                            <Input 
-                                value={searchService} 
-                                onChange={e => setSearchService(e.target.value)} 
-                                placeholder="Найти услугу..." 
-                                className="pl-12 h-14 rounded-[1.5rem] border-neutral-100 shadow-sm bg-white font-bold text-neutral-700" 
-                            />
-                        </div>
-
-                        <div className="grid gap-3 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                            {!searchService ? (
-                                // Manual selection (all services)
-                                <div className="space-y-2">
-                                    {(mode === 'create' ? employeeServices : allServices || []).map((s: any, i: number) => {
-                                        const serviceItem = s.service || s;
-                                        const isSelected = formData.selectedServices.some(ss => ss.service_id === (s.service_id || s.id));
-                                        return (
-                                            <div 
-                                                key={i} 
-                                                onClick={() => {
-                                                    if (isSelected) {
-                                                        setFormData({...formData, selectedServices: formData.selectedServices.filter(ss => ss.service_id !== (s.service_id || s.id))});
-                                                    } else {
-                                                        setFormData({...formData, selectedServices: [...formData.selectedServices, {
-                                                            service_id: s.service_id || s.id,
-                                                            price: s.price,
-                                                            duration_minutes: s.duration_minutes || s.duration,
-                                                            service: serviceItem
-                                                        }]});
-                                                    }
-                                                }}
-                                                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between group ${isSelected ? 'bg-neutral-900 border-neutral-900 text-white shadow-xl shadow-neutral-900/10' : 'bg-white border-neutral-100 hover:border-neutral-300 hover:shadow-md'}`}
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold">{serviceItem.name}</span>
-                                                    <span className={`text-[10px] uppercase font-black tracking-wider mt-1 ${isSelected ? 'text-white/60' : 'text-neutral-400'}`}>{s.duration_minutes || s.duration} мин</span>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-sm font-black">{s.price} BYN</span>
-                                                    {isSelected ? <Check className="h-5 w-5" /> : <Plus className="h-5 w-5 text-neutral-200 group-hover:text-neutral-900" />}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                    {/* Column 2: Services & Payments */}
+                    <div className="border-r border-neutral-100 flex flex-col overflow-hidden bg-neutral-50/30">
+                        <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
+                            {/* Selected Services - Smaller List */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-neutral-900">Выбранные услуги</h3>
+                                    <Badge className="bg-neutral-900 text-white border-none px-2 py-0.5 rounded-lg text-[10px] font-black">{formData.selectedServices.length}</Badge>
                                 </div>
-                            ) : (
-                                // Autocomplete results
-                                filteredServices.map((s, i) => (
-                                    <div 
-                                        key={i} 
-                                        onClick={() => { 
-                                            setFormData({...formData, selectedServices: [...formData.selectedServices, s]}); 
-                                            setSearchService(''); 
-                                        }} 
-                                        className="p-4 bg-white rounded-2xl border border-neutral-100 hover:border-neutral-900 cursor-pointer flex justify-between items-center transition-all hover:shadow-md"
-                                    >
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-neutral-800">{s.service?.name}</span>
-                                            <span className="text-[10px] text-neutral-400 font-black uppercase tracking-wider mt-1">{s.duration_minutes} мин</span>
+                                <div className="space-y-2">
+                                    {formData.selectedServices.map((s, i) => (
+                                        <div key={i} className="flex items-center justify-between p-3 bg-white rounded-xl border border-neutral-100 shadow-sm animate-in fade-in zoom-in-95 duration-200">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold text-neutral-800">{s.service?.name}</span>
+                                                <span className="text-[9px] text-neutral-400 font-black uppercase">{s.duration_minutes} мин</span>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-xs font-black text-neutral-900">{s.price} BYN</span>
+                                                <button onClick={() => setFormData({...formData, selectedServices: formData.selectedServices.filter((_, idx) => idx !== i)})} className="text-neutral-300 hover:text-red-500 transition-colors">
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <span className="text-sm font-black text-neutral-900">{s.price} BYN</span>
+                                    ))}
+                                    {formData.selectedServices.length === 0 && (
+                                        <div className="py-8 text-center border-2 border-dashed border-neutral-100 rounded-2xl">
+                                            <p className="text-[10px] font-bold text-neutral-300 uppercase tracking-widest">Ничего не выбрано</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="h-px bg-neutral-100" />
+
+                            {/* Available Services - Collapsible & Categorized */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-neutral-900">Доступные услуги</h3>
+                                    <Button variant="ghost" size="sm" onClick={() => setShowAvailableServices(!showAvailableServices)} className="h-8 px-2 text-neutral-400 hover:text-neutral-900">
+                                        {showAvailableServices ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+                                        <span className="text-[10px] font-black uppercase">{showAvailableServices ? 'Скрыть' : 'Показать'}</span>
+                                    </Button>
+                                </div>
+
+                                {showAvailableServices && (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="relative">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                            <Input 
+                                                value={searchService} 
+                                                onChange={e => setSearchService(e.target.value)} 
+                                                placeholder="Поиск услуги..." 
+                                                className="pl-9 h-10 rounded-xl border-neutral-100 shadow-sm bg-white font-bold text-xs" 
+                                            />
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {searchService ? (
+                                                filteredServices.map((s, i) => (
+                                                    <div 
+                                                        key={i} 
+                                                        onClick={() => { 
+                                                            if (!formData.selectedServices.some(ss => ss.service_id === s.service_id)) {
+                                                                setFormData({...formData, selectedServices: [...formData.selectedServices, s]}); 
+                                                            }
+                                                            setSearchService(''); 
+                                                        }} 
+                                                        className="p-3 bg-white rounded-xl border border-neutral-100 hover:border-neutral-900 cursor-pointer flex justify-between items-center transition-all hover:shadow-sm"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-bold text-neutral-800">{s.service?.name}</span>
+                                                            <span className="text-[9px] text-neutral-400 font-black uppercase">{s.duration_minutes} мин</span>
+                                                        </div>
+                                                        <span className="text-xs font-black text-neutral-900">{s.price} BYN</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                categorizedServices.map((cat, i) => (
+                                                    <div key={cat.id} className="border border-neutral-100 rounded-xl overflow-hidden bg-white shadow-sm">
+                                                        <div 
+                                                            onClick={() => toggleCategory(cat.id)}
+                                                            className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-neutral-50 transition-colors"
+                                                        >
+                                                            <span className="text-[10px] font-black uppercase text-neutral-500 tracking-widest">{cat.name}</span>
+                                                            {collapsedCategories[cat.id as keyof typeof collapsedCategories] ? <ChevronDown className="h-4 w-4 text-neutral-300" /> : <ChevronUp className="h-4 w-4 text-neutral-300" />}
+                                                        </div>
+                                                        {!collapsedCategories[cat.id as keyof typeof collapsedCategories] && (
+                                                            <div className="border-t border-neutral-50 p-2 space-y-1 bg-neutral-50/30">
+                                                                {cat.services.map((s: any, idx: number) => {
+                                                                    const isSelected = formData.selectedServices.some(ss => ss.service_id === s.service_id);
+                                                                    return (
+                                                                        <div 
+                                                                            key={idx} 
+                                                                            onClick={() => {
+                                                                                if (isSelected) {
+                                                                                    setFormData({...formData, selectedServices: formData.selectedServices.filter(ss => ss.service_id !== s.service_id)});
+                                                                                } else {
+                                                                                    setFormData({...formData, selectedServices: [...formData.selectedServices, s]});
+                                                                                }
+                                                                            }}
+                                                                            className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-all ${isSelected ? 'bg-neutral-900 border-neutral-900 text-white' : 'bg-white border-transparent hover:border-neutral-200'}`}
+                                                                        >
+                                                                            <div className="flex flex-col">
+                                                                                <span className="text-xs font-bold">{s.service.name}</span>
+                                                                                <span className={`text-[8px] font-black uppercase ${isSelected ? 'text-white/60' : 'text-neutral-400'}`}>{s.duration_minutes} мин</span>
+                                                                            </div>
+                                                                            <span className="text-xs font-black">{s.price} BYN</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
                                     </div>
-                                ))
-                            )}
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Payments Section - Middle Column Bottom */}
+                        <div className="p-6 border-t border-neutral-100 bg-white shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.05)]">
+                            <div className="grid grid-cols-2 gap-6 mb-6">
+                                <div className="space-y-1">
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Итого</span>
+                                    <div className="text-lg font-black text-neutral-900">{formData.totalPrice} BYN</div>
+                                </div>
+                                <div className="space-y-1 text-right">
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Остаток</span>
+                                    <div className={cn("text-lg font-black", remainingToPay > 0 ? "text-red-500" : "text-emerald-500")}>
+                                        {remainingToPay} BYN
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-4">
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[
+                                        { id: 'cash', label: 'Нал', icon: Banknote },
+                                        { id: 'card', label: 'Безнал', icon: CreditCard },
+                                        { id: 'other', label: 'Другое', icon: Smartphone }
+                                    ].map(method => (
+                                        <Button 
+                                            key={method.id} 
+                                            variant="outline" 
+                                            onClick={() => { 
+                                                if (remainingToPay > 0) setFormData({...formData, payments: [...formData.payments, {method: method.id, amount: remainingToPay}]}); 
+                                            }} 
+                                            className="h-10 rounded-xl border-neutral-100 font-bold gap-2 hover:bg-neutral-50 text-[10px] uppercase"
+                                        >
+                                            <method.icon className="h-3.5 w-3.5" />
+                                            {method.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    {formData.payments.map((p, i) => (
+                                        <div key={i} className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100 animate-in slide-in-from-right-2 duration-200">
+                                            <span className="text-[9px] font-black uppercase text-neutral-400">{p.method === 'cash' ? 'НАЛ' : p.method === 'card' ? 'БЕЗНАЛ' : 'ДРУГОЕ'}</span>
+                                            <div className="flex items-center gap-2">
+                                                <Input 
+                                                    type="number" 
+                                                    value={p.amount} 
+                                                    onChange={e => {
+                                                        const newPayments = [...formData.payments];
+                                                        newPayments[i].amount = parseFloat(e.target.value) || 0;
+                                                        setFormData({...formData, payments: newPayments});
+                                                    }} 
+                                                    className="h-7 w-20 text-right font-black border-none bg-white rounded-md text-xs p-1" 
+                                                />
+                                                <button onClick={() => setFormData({...formData, payments: formData.payments.filter((_, idx) => idx !== i)})} className="text-neutral-300 hover:text-red-500">
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Column 3: Payments & Summary */}
-                    <div className="p-6 flex flex-col gap-6 overflow-y-auto custom-scrollbar bg-neutral-50/60">
-                        <div className="bg-white rounded-[2rem] border border-neutral-100 p-6 shadow-sm flex flex-col gap-4">
-                            <h3 className="text-lg font-black tracking-tight">Расчет</h3>
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between text-neutral-400">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest">Итого</span>
-                                    <span className="text-base font-black text-neutral-900">{formData.totalPrice} BYN</span>
-                                </div>
-                                <div className="flex items-center justify-between text-neutral-400">
-                                    <span className="text-[10px] font-bold uppercase tracking-widest">Оплачено</span>
-                                    <span className="text-base font-black text-neutral-900">{totalPaid} BYN</span>
-                                </div>
-                                <div className="h-px bg-neutral-100" />
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-900">К оплате</span>
-                                    <span className={`text-xl font-black ${remainingToPay > 0 ? 'text-neutral-900' : 'text-neutral-300'}`}>{remainingToPay} BYN</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-[2rem] border border-neutral-100 p-6 shadow-sm flex flex-col gap-4">
-                            <h3 className="text-base font-black tracking-tight">Метод оплаты</h3>
-                            <div className="grid grid-cols-1 gap-2">
-                                {['cash', 'card', 'qr'].map(method => (
-                                    <Button 
-                                        key={method} 
-                                        variant="outline" 
-                                        onClick={() => { 
-                                            if (remainingToPay > 0) setFormData({...formData, payments: [...formData.payments, {method, amount: remainingToPay}]}); 
-                                        }} 
-                                        className="h-12 rounded-xl border-neutral-100 font-bold gap-3 hover:bg-neutral-50 hover:border-neutral-200 transition-all justify-start px-4"
-                                    >
-                                        <div className="p-1.5 bg-neutral-50 rounded-lg group-hover:bg-white transition-colors">
-                                            {method === 'cash' ? <Banknote className="h-4 w-4 text-neutral-600" /> : method === 'card' ? <CreditCard className="h-4 w-4 text-neutral-600" /> : <Smartphone className="h-4 w-4 text-neutral-600" />}
-                                        </div>
-                                        <span className="text-xs text-neutral-600">{method === 'cash' ? 'Наличные' : method === 'card' ? 'Банковская карта' : 'QR-код / Оплати'}</span>
-                                    </Button>
-                                ))}
+                    {/* Column 3: Client Info & Stats */}
+                    <div className="p-6 flex flex-col gap-8 overflow-y-auto custom-scrollbar bg-white client-search-container">
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between px-1">
+                                <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em]">Клиент</h4>
+                                {formData.isGuest && <Badge className="bg-neutral-100 text-neutral-400 border-none text-[9px] font-black uppercase">Гость</Badge>}
                             </div>
                             
-                            <div className="space-y-2 mt-2">
-                                {formData.payments.map((p, i) => (
-                                    <div key={i} className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-neutral-100 animate-in zoom-in-95 duration-200">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-neutral-900 shadow-[0_0_8px_rgba(0,0,0,0.1)]" />
-                                            <span className="text-[10px] font-black uppercase text-neutral-900 tracking-wider font-mono">
-                                                {p.method === 'cash' ? 'CASH' : p.method === 'card' ? 'CARD' : 'QR'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <Input 
-                                                type="number" 
-                                                value={p.amount} 
-                                                onChange={e => {
-                                                    const newPayments = [...formData.payments];
-                                                    newPayments[i].amount = parseFloat(e.target.value) || 0;
-                                                    setFormData({...formData, payments: newPayments});
-                                                }} 
-                                                className="h-8 w-24 text-right font-black border-none bg-neutral-100 rounded-lg text-neutral-900 focus:ring-1 focus:ring-neutral-200" 
-                                            />
-                                            <button onClick={() => setFormData({...formData, payments: formData.payments.filter((_, idx) => idx !== i)})} className="text-neutral-300 hover:text-red-500 transition-colors">
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
+                            <div className="space-y-4">
+                                <div className="space-y-2 relative">
+                                    <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">ФИО / Поиск</Label>
+                                    <div className="relative">
+                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                        <Input
+                                            value={formData.clientName}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setFormData({...formData, clientName: val});
+                                                setActiveSearchField('name');
+                                                setShowClientDropdown(true);
+                                            }}
+                                            onFocus={() => {
+                                                setActiveSearchField('name');
+                                                setShowClientDropdown(true);
+                                            }}
+                                            placeholder="Введите имя или телефон..."
+                                            className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm"
+                                        />
+                                        <ClientDropdown field="name" />
+                                    </div>
+                                </div>
+                                <div className="space-y-2 relative">
+                                    <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">Телефон</Label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                        <Input
+                                            value={formData.clientPhone}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                setFormData({...formData, clientPhone: val});
+                                                setActiveSearchField('phone');
+                                                setShowClientDropdown(true);
+                                            }}
+                                            onFocus={() => {
+                                                setActiveSearchField('phone');
+                                                setShowClientDropdown(true);
+                                            }}
+                                            placeholder="+375 •• •••-••-••"
+                                            className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm"
+                                        />
+                                        <ClientDropdown field="phone" />
+                                    </div>
+                                </div>
+                            </div>                        </div>
+
+                        {/* Client Statistics */}
+                        <div className="space-y-4">
+                            <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em] px-1">Статистика</h4>
+                            {selectedCustomerStats ? (
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center gap-4">
+                                        <div className="p-2 bg-white rounded-xl shadow-sm"><History className="h-5 w-5 text-emerald-600" /></div>
+                                        <div>
+                                            <div className="text-lg font-black text-emerald-900">{selectedCustomerStats.total_visits}</div>
+                                            <div className="text-[9px] font-black uppercase text-emerald-600 tracking-wider">Всего посещений</div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="p-4 bg-red-50 rounded-2xl border border-red-100 flex items-center gap-4">
+                                        <div className="p-2 bg-white rounded-xl shadow-sm"><UserX className="h-5 w-5 text-red-600" /></div>
+                                        <div>
+                                            <div className="text-lg font-black text-red-900">{selectedCustomerStats.no_shows}</div>
+                                            <div className="text-[9px] font-black uppercase text-red-600 tracking-wider">Не пришел</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center border-2 border-dashed border-neutral-50 rounded-[2rem]">
+                                    <p className="text-[10px] font-bold text-neutral-300 uppercase tracking-widest leading-relaxed">Выберите клиента<br/>для просмотра статистики</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -486,14 +746,47 @@ export function BookingEditor({
                         <Button variant="ghost" onClick={onClose} className="rounded-2xl font-bold">Отмена</Button>
                         <Button 
                             onClick={handleSave} 
-                            disabled={isSaving}
+                            disabled={isSaving || isSearchingClient}
                             className="h-12 px-8 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold text-sm shadow-xl shadow-black/10 hover:scale-[1.02] transition-transform"
                         >
-                            {isSaving ? 'Сохранение...' : (mode === 'create' ? 'Создать запись' : 'Сохранить изменения')}
+                            {isSearchingClient ? 'Поиск клиента...' : isSaving ? 'Сохранение...' : (mode === 'create' ? 'Создать запись' : 'Сохранить изменения')}
                         </Button>
                     </div>
                 </div>
             </DialogContent>
         </Dialog>
+
+        <Dialog open={showOverbookingWarning} onOpenChange={setShowOverbookingWarning}>
+            <DialogContent className="max-w-md p-0 overflow-hidden border-none bg-white rounded-[2rem] shadow-2xl shadow-black/20">
+                <div className="p-8 space-y-6 text-center">
+                    <div className="mx-auto w-20 h-20 bg-amber-50 rounded-3xl flex items-center justify-center">
+                        <AlertCircle className="w-10 h-10 text-amber-500" />
+                    </div>
+                    <div className="space-y-2">
+                        <DialogTitle className="text-2xl font-black text-neutral-900">Пересечение времени</DialogTitle>
+                        <DialogDescription className="text-sm font-medium text-neutral-500 leading-relaxed px-4">
+                            На выбранное время у мастера уже есть другая запись. Вы уверены, что хотите создать запись с пересечением?
+                        </DialogDescription>
+                    </div>
+                </div>
+                <div className="bg-neutral-50/50 p-6 flex gap-3 sm:justify-center">
+                    <Button 
+                        variant="ghost" 
+                        onClick={() => setShowOverbookingWarning(false)} 
+                        className="flex-1 h-12 rounded-xl font-bold hover:bg-neutral-100 transition-colors"
+                    >
+                        Отмена
+                    </Button>
+                    <Button 
+                        onClick={executeSave} 
+                        disabled={isSaving}
+                        className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold shadow-lg shadow-black/10 transition-all active:scale-[0.98]"
+                    >
+                        {isSaving ? 'Сохранение...' : 'Создать запись'}
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }

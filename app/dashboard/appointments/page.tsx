@@ -92,6 +92,15 @@ export default function AppointmentsPage() {
         enabled: !!selectedBranchID,
     });
 
+    const { data: categories } = useQuery({
+        queryKey: ['categories', selectedBranchID],
+        queryFn: async () => {
+            const res = await api.get(`/branches/${selectedBranchID}/categories`);
+            return res.data;
+        },
+        enabled: !!selectedBranchID,
+    });
+
     const { data: employeeServices } = useQuery({
         queryKey: ['employee-services', selectedSlot?.empID],
         queryFn: async () => {
@@ -224,7 +233,13 @@ export default function AppointmentsPage() {
     };
 
     const handleSlotClick = (empID: number, time: DateTime) => {
-        setSelectedSlot({ empID, time });
+        const slotTime = currentDate.set({ 
+            hour: time.hour, 
+            minute: time.minute, 
+            second: 0, 
+            millisecond: 0 
+        });
+        setSelectedSlot({ empID, time: slotTime });
         setEditorMode('create');
         setIsEditorOpen(true);
     };
@@ -243,9 +258,7 @@ export default function AppointmentsPage() {
                 email: editorData.clientEmail,
             });
 
-            const dateStr = editorMode === 'create' && selectedSlot 
-                ? currentDate.toFormat('yyyy-MM-dd') 
-                : selectedAppointment?.start_time.slice(0, 10);
+            const dateStr = editorData.bookingDate.toFormat('yyyy-MM-dd');
 
             const startISO = `${dateStr}T${editorData.startTime}:00`;
             const endISO = `${dateStr}T${editorData.endTime}:00`;
@@ -264,7 +277,11 @@ export default function AppointmentsPage() {
                     end_time: endISO,
                     comment: editorData.comment,
                     total_price: editorData.totalPrice,
-                    services: servicesData
+                    services: servicesData,
+                    payments: editorData.payments?.map((p: any) => ({
+                        amount: Number(p.amount),
+                        method: p.method
+                    })) || []
                 });
                 toast.success('Запись создана');
             } else if (editorMode === 'edit' && selectedAppointment) {
@@ -272,7 +289,7 @@ export default function AppointmentsPage() {
                     id: selectedAppointment.id,
                     data: {
                         employee_id: selectedAppointment.employee_id,
-                        client_id: selectedAppointment.client_id,
+                        client_id: clientRes.data.id,
                         start_time: startISO,
                         end_time: endISO,
                         comment: editorData.comment,
@@ -454,7 +471,9 @@ export default function AppointmentsPage() {
                 employees={employees || []}
                 allServices={allServices || []}
                 employeeServices={employeeServices || []}
+                categories={categories || []}
                 customers={customers || []}
+                appointments={appointments || []}
                 onSave={handleSaveBooking}
                 isSaving={createBookingMutation.isPending || updateBookingMutation.isPending || createCustomerMutation.isPending}
             />
