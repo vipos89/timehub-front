@@ -255,7 +255,15 @@ export function WidgetBuilder({ isOpen, onClose, onSave, initialData, branches, 
                 </aside>
 
                 <main className="flex-1 bg-neutral-50 flex items-center justify-center p-8 relative overflow-hidden">
-                    <WidgetPreview settings={formData.settings} company={company} branches={branches} type={formData.widgetType} branchId={formData.branchId} employeeId={formData.employeeId} />
+                    <WidgetPreview 
+                        settings={formData.settings} 
+                        company={company} 
+                        branches={branches} 
+                        type={formData.widgetType} 
+                        branchId={formData.branchId} 
+                        employeeId={formData.employeeId}
+                        activeTab={activeTab}
+                    />
                 </main>
             </div>
         </div>

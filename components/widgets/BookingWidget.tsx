@@ -47,6 +47,7 @@ interface BookingWidgetProps {
     categories?: any[];
     settings: any;
     isPreview?: boolean;
+    onClose?: () => void;
 }
 
 export function BookingWidget({ 
@@ -54,11 +55,12 @@ export function BookingWidget({
     company, 
     branch: initialBranch, 
     branches = [],
-    employees: initialEmployees, 
+    employees: initialEmployees = [], 
     services: initialServices = [],
     categories: initialCategories = [],
     settings, 
-    isPreview 
+    isPreview,
+    onClose
 }: BookingWidgetProps) {
     const [view, setView] = useState<'home' | 'branches' | 'specialist' | 'services' | 'datetime' | 'profile' | 'success'>('home');
     const [selectedBranch, setSelectedBranch] = useState<any>(initialBranch);
@@ -81,10 +83,10 @@ export function BookingWidget({
     const isDark = theme === 'dark';
     const isGlass = theme === 'glass';
     const bgColor = isDark ? '#171717' : isGlass ? 'transparent' : '#ffffff';
-    const windowBg = isDark ? '#171717' : isGlass ? 'rgba(255, 255, 255, 0.7)' : '#ffffff';
+    const windowBg = isDark ? '#171717' : isGlass ? 'rgba(255, 255, 255, 0.8)' : '#ffffff';
     const textColor = isDark ? '#ffffff' : '#171717';
     const borderColor = isDark ? '#262626' : isGlass ? 'rgba(255, 255, 255, 0.2)' : '#f5f5f5';
-    const cardBg = isDark ? '#262626' : isGlass ? 'rgba(255, 255, 255, 0.4)' : '#ffffff';
+    const cardBg = isDark ? '#262626' : isGlass ? 'rgba(255, 255, 255, 0.5)' : '#ffffff';
 
     const headerBg = useGradient 
         ? `linear-gradient(135deg, ${accentColor}, ${headerSecondaryColor})`
@@ -152,12 +154,30 @@ export function BookingWidget({
         if (!clientData.name || !clientData.phone || !selectedSlot) return;
         if (isPreview) { setView('success'); return; }
         const empId = selectedEmployee?.id || selectedSlot.employee_id;
-        const formattedStartTime = selectedSlot.start_time.slice(0, 19);
+        
+        // Pass full ISO string with offset
+        const formattedStartTime = selectedSlot.start_time; 
         const exactDuration = selectedServices.reduce((sum, s) => sum + getEmployeeServiceDuration(s, empId), 0);
-        const exactEndTime = DateTime.fromISO(formattedStartTime).plus({ minutes: exactDuration }).toFormat("yyyy-MM-dd'T'HH:mm:ss");
+        
+        // Calculate end time using Luxon to preserve offset
+        const exactEndTime = DateTime.fromISO(formattedStartTime).plus({ minutes: exactDuration }).toISO();
+
         try {
             const customerRes = await api.post('/customers', { company_id: company.id, branch_id: selectedBranch.id, first_name: clientData.name, phone: clientData.phone });
-            bookingMutation.mutate({ company_id: company.id, employee_id: empId, client_id: customerRes.data.id, start_time: formattedStartTime, end_time: exactEndTime, comment: clientData.comment, total_price: selectedServices.reduce((sum, s) => sum + getEmployeeServicePrice(s, empId), 0), services: selectedServices.map(s => ({ service_id: s.id, price: getEmployeeServicePrice(s, empId), duration_minutes: getEmployeeServiceDuration(s, empId) })) });
+            bookingMutation.mutate({ 
+                company_id: company.id, 
+                employee_id: empId, 
+                client_id: customerRes.data.id, 
+                start_time: formattedStartTime, 
+                end_time: exactEndTime, 
+                comment: clientData.comment, 
+                total_price: selectedServices.reduce((sum, s) => sum + getEmployeeServicePrice(s, empId), 0), 
+                services: selectedServices.map(s => ({ 
+                    service_id: s.id, 
+                    price: getEmployeeServicePrice(s, empId), 
+                    duration_minutes: getEmployeeServiceDuration(s, empId) 
+                })) 
+            });
         } catch (err) { toast.error('Ошибка при создании клиента'); }
     };
 
@@ -173,16 +193,14 @@ export function BookingWidget({
                 @keyframes th-pop { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
                 .th-pulse { animation: th-pulse 2s infinite; } .th-shake { animation: th-shake 0.5s infinite; } .th-float { animation: th-float 3s ease-in-out infinite; } .th-glow { animation: th-glow 2s infinite; } .th-bounce { animation: th-bounce 2s infinite; } .th-swing { animation: th-swing 2s infinite; transform-origin: top center; } .th-pop { animation: th-pop 1s infinite; }
             `}</style>
-            {/* Background Decorative Banner */}
-            <div className="absolute top-0 left-0 right-0 h-40 transition-all duration-700 opacity-80" style={{ background: headerBg, borderRadius: `0 0 ${borderRadius}px ${borderRadius}px` }} />
+
+            <div className="absolute top-0 left-0 right-0 h-40 transition-all duration-700 opacity-20" style={{ background: headerBg, borderRadius: `0 0 ${borderRadius}px ${borderRadius}px` }} />
             
-            {/* Floating Top Bar */}
-            <div className="relative shrink-0 px-6 pt-6 flex items-center justify-between z-50">
-                <button onClick={() => view === 'home' ? null : setView('home')} className="p-2.5 bg-white/20 backdrop-blur-md border border-white/30 rounded-xl text-white shadow-lg transition-all active:scale-90"><X className="h-5 w-5" /></button>
+            <div className="relative shrink-0 px-6 pt-6 flex items-center justify-end z-50">
+                <button onClick={onClose} className="p-2.5 bg-neutral-900/5 hover:bg-neutral-900/10 backdrop-blur-md rounded-xl text-neutral-900 transition-all active:scale-90"><X className="h-5 w-5" /></button>
             </div>
 
-            {/* Main Content Area */}
-            <div className="flex-1 relative z-10 overflow-y-auto custom-scrollbar px-6 pt-4 pb-32">
+            <div className="flex-1 relative z-10 overflow-y-auto custom-scrollbar px-6 pt-2 pb-32">
                 {view === 'home' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col items-center text-center space-y-4">
@@ -191,11 +209,64 @@ export function BookingWidget({
                                 <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1.5 rounded-xl shadow-lg ring-4 ring-white"><Check className="h-3 w-3 stroke-[4]" /></div>
                             </div>
                             <div className="space-y-1">
-                                <h1 className="text-2xl font-black tracking-tighter" style={{ color: '#fff', textShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>{company?.name}</h1>
-                                {selectedBranch && (
-                                    <div className="flex flex-col items-center gap-1.5"><div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-white/70"><MapPin className="h-3 w-3" />{selectedBranch.address || selectedBranch.name}</div></div>
+                                <h1 className="text-2xl font-black tracking-tighter" style={{ color: textColor }}>{company?.name}</h1>
+                                
+                                {widgetType === 'network' ? (
+                                    <div className="pt-2">
+                                        {selectedBranch ? (
+                                            <button 
+                                                onClick={() => setView('branches')}
+                                                className="group flex flex-col items-center gap-1 active:scale-95 transition-all"
+                                            >
+                                                <div className="flex items-center gap-1.5 px-4 py-1.5 bg-neutral-900/5 rounded-full border border-neutral-900/5 group-hover:bg-neutral-900/10 transition-colors">
+                                                    <MapPin className="h-3 w-3 text-neutral-400" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: textColor }}>{selectedBranch.name}</span>
+                                                    <ChevronRight className="h-3 w-3 text-neutral-300 group-hover:translate-x-0.5 transition-transform" />
+                                                </div>
+                                                <span className="text-[9px] font-bold text-neutral-400 opacity-60 truncate max-w-[200px]">{selectedBranch.address || 'Сменить филиал'}</span>
+                                            </button>
+                                        ) : (
+                                            <Button 
+                                                onClick={() => setView('branches')}
+                                                variant="outline"
+                                                className="h-10 px-6 rounded-2xl border-2 font-black text-[10px] uppercase tracking-widest animate-bounce duration-[2000ms]"
+                                                style={{ borderColor: accentColor }}
+                                            >
+                                                <MapPin className="h-3.5 w-3.5 mr-2" />
+                                                Выберите филиал
+                                            </Button>
+                                        )}
+                                    </div>
+                                ) : (
+                                    selectedBranch && (
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest opacity-40" style={{ color: textColor }}>
+                                                <MapPin className="h-3 w-3" />
+                                                {selectedBranch.address || selectedBranch.name}
+                                            </div>
+                                        </div>
+                                    )
                                 )}
                             </div>
+
+                            {/* Social Links restored */}
+                            {settings.showSocialLinks !== false && (
+                                <div className="flex gap-3 justify-center pt-2">
+                                    {[
+                                        { Icon: Instagram, link: company?.instagram_url },
+                                        { Icon: Send, link: company?.telegram_url },
+                                        { Icon: Globe, link: company?.website_url }
+                                    ].map((social, idx) => (
+                                        <button 
+                                            key={idx}
+                                            className="h-12 w-12 rounded-2xl flex items-center justify-center border-2 transition-all hover:scale-110 active:scale-95 shadow-sm bg-white" 
+                                            style={{ borderColor: borderColor }}
+                                        >
+                                            <social.Icon className="h-5 w-5 opacity-40" style={{ color: textColor }} />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-3 pb-4">
                             {(settings.stepsOrder || ['services', 'specialist', 'datetime']).map((step: string) => {
@@ -224,30 +295,123 @@ export function BookingWidget({
                     <div className="space-y-6 pt-4 animate-in slide-in-from-right-8 duration-500">
                         <div className="flex items-center gap-4"><button onClick={() => setView('home')} className="h-12 w-12 rounded-2xl flex items-center justify-center border-2" style={{ borderColor: borderColor, color: textColor }}><ArrowLeft className="h-6 w-6" /></button><h2 className="text-3xl font-black tracking-tighter" style={{ color: textColor }}>Филиалы</h2></div>
                         <div className="grid grid-cols-1 gap-4">
-                            {(branches.length > 0 ? branches : (company?.branches || [])).map((b: any) => (
-                                <div key={b.id} onClick={() => handleSelectBranch(b)} className="p-6 flex items-center justify-between cursor-pointer transition-all border-2 shadow-sm active:scale-[0.98]" style={{ backgroundColor: cardBg, borderColor: selectedBranch?.id === b.id ? accentColor : borderColor, borderRadius: `${borderRadius}px`, borderWidth: '2px' }}>
-                                    <div className="flex items-center gap-5"><div className="h-14 w-14 flex items-center justify-center shadow-inner border-2" style={{ backgroundColor: cardBg, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px` }}><MapPin className="h-7 w-7" style={{ color: textColor }} /></div><div className="flex flex-col"><span className="text-xl font-bold tracking-tight" style={{ color: textColor }}>{b.name}</span><span className="text-sm font-medium opacity-40 truncate max-w-[200px]" style={{ color: textColor }}>{b.address || 'Адрес не указан'}</span></div></div>
-                                    {selectedBranch?.id === b.id && <div className="h-8 w-8 bg-black text-white rounded-full flex items-center justify-center shadow-lg"><Check className="h-5 w-5 stroke-[3]" /></div>}
-                                </div>
-                            ))}
+                            {(branches.length > 0 ? branches : (company?.branches || [])).map((b: any) => {
+                                const isSelected = selectedBranch?.id === b.id;
+                                return (
+                                    <div 
+                                        key={b.id} 
+                                        onClick={() => handleSelectBranch(b)} 
+                                        className="p-6 flex items-center justify-between cursor-pointer border-2 shadow-sm active:scale-[0.98] transition-all" 
+                                        style={{ 
+                                            backgroundColor: cardBg, 
+                                            borderColor: isSelected ? accentColor : borderColor, 
+                                            borderRadius: `${borderRadius}px`,
+                                            boxShadow: isSelected ? `0 10px 30px ${accentColor}20` : 'none'
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-5">
+                                            <div className="h-14 w-14 flex items-center justify-center shadow-inner border-2" style={{ backgroundColor: cardBg, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px` }}><MapPin className="h-7 w-7" style={{ color: textColor }} /></div>
+                                            <div className="flex flex-col"><span className="text-xl font-bold tracking-tight" style={{ color: textColor }}>{b.name}</span><span className="text-sm font-medium opacity-40 truncate max-w-[200px]" style={{ color: textColor }}>{b.address || 'Адрес не указан'}</span></div>
+                                        </div>
+                                        {isSelected && <div className="h-8 w-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: accentColor }}><Check className="h-5 w-5 stroke-[3]" style={{ color: accentColor === '#F5FF82' ? '#000' : '#fff' }} /></div>}
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
 
                 {view === 'specialist' && (
                     <div className="space-y-8 pt-4 animate-in slide-in-from-right-8 duration-500">
-                        <div className="flex items-center gap-4"><button onClick={() => setView('home')} className="h-12 w-12 rounded-2xl flex items-center justify-center border-2" style={{ borderColor: borderColor, color: textColor }}><ArrowLeft className="h-6 w-6" /></button><h2 className="text-3xl font-black tracking-tighter" style={{ color: textColor }}>Мастера</h2></div>
-                        <div className="grid grid-cols-1 gap-4">
-                            <div className="p-6 flex items-center justify-between cursor-pointer border-2 transition-all active:scale-[0.98]" style={{ backgroundColor: cardBg, borderColor: !selectedEmployee ? accentColor : borderColor, borderRadius: `${borderRadius}px` }} onClick={() => handleSelectSpecialist(null)}>
-                                <div className="flex items-center gap-5"><div className="h-16 w-16 rounded-3xl bg-neutral-900 flex items-center justify-center shadow-xl"><Users className="h-8 w-8 text-white" /></div><div className="flex flex-col"><span className="text-xl font-bold tracking-tight" style={{ color: textColor }}>Любой мастер</span><span className="text-sm font-medium opacity-40" style={{ color: textColor }}>Выберем свободного</span></div></div>
-                                {!selectedEmployee && <div className="h-8 w-8 bg-black text-white rounded-full flex items-center justify-center shadow-lg"><Check className="h-5 w-5 stroke-[3]" /></div>}
-                            </div>
-                            {employees.map((emp: any) => (
-                                <div key={emp.id} onClick={() => handleSelectSpecialist(emp)} className="p-6 flex items-center justify-between cursor-pointer border-2 transition-all active:scale-[0.98]" style={{ backgroundColor: cardBg, borderColor: selectedEmployee?.id === emp.id ? accentColor : borderColor, borderRadius: `${borderRadius}px` }}>
-                                    <div className="flex items-center gap-5"><Avatar className="h-16 w-16 rounded-3xl ring-4 ring-white/10 shadow-xl"><AvatarImage src={emp.avatar_url} /><AvatarFallback className="font-black text-lg bg-neutral-900 text-white">{emp.name?.[0]}</AvatarFallback></Avatar><div className="flex flex-col"><span className="text-xl font-bold tracking-tight" style={{ color: textColor }}>{emp.name}</span><span className="text-sm font-medium opacity-40" style={{ color: textColor }}>{emp.position || 'Специалист'}</span></div></div>
-                                    {selectedEmployee?.id === emp.id && <div className="h-8 w-8 bg-black text-white rounded-full flex items-center justify-center shadow-lg"><Check className="h-5 w-5 stroke-[3]" /></div>}
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setView('home')} className="h-12 w-12 rounded-2xl flex items-center justify-center border-2 transition-colors hover:bg-neutral-50" style={{ borderColor: borderColor, color: textColor }}>
+                                <ArrowLeft className="h-6 w-6" />
+                            </button>
+                            <h2 className="text-3xl font-black tracking-tighter" style={{ color: textColor }}>Мастера</h2>
+                        </div>
+
+                        <div className="flex flex-col gap-6">
+                            {/* Any Master Card */}
+                            <div 
+                                onClick={() => handleSelectSpecialist(null)}
+                                className={cn(
+                                    "relative p-6 rounded-[2.5rem] border-2 transition-all duration-300 cursor-pointer bg-white shadow-sm hover:shadow-xl active:scale-[0.98]",
+                                    !selectedEmployee ? "border-neutral-900 ring-4 ring-neutral-900/5" : "border-neutral-100 hover:border-neutral-200"
+                                )}
+                                style={{ borderColor: !selectedEmployee ? accentColor : undefined }}
+                            >
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-5">
+                                        <div className="h-16 w-16 rounded-3xl bg-neutral-900 flex items-center justify-center shadow-lg">
+                                            <Users className="h-8 w-8 text-white" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xl font-black tracking-tight" style={{ color: textColor }}>Любой мастер</span>
+                                            <span className="text-sm font-bold opacity-40" style={{ color: textColor }}>Выберем свободного</span>
+                                        </div>
+                                    </div>
+                                    {!selectedEmployee && <div className="h-8 w-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: accentColor }}><Check className="h-5 w-5 stroke-[4]" style={{ color: accentColor === '#F5FF82' ? '#000' : '#fff' }} /></div>}
                                 </div>
-                            ))}
+                                
+                                <div className="pt-4 border-t border-neutral-50">
+                                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-300 mb-3">Ближайшие окна всех мастеров:</p>
+                                    <EmployeeAvailableSlots 
+                                        employeeIds={employees.map((e: any) => e.id).join(',')} 
+                                        mode="compact" 
+                                        duration={totalDuration}
+                                        onSlotSelect={(slot) => {
+                                            setSelectedEmployee(null);
+                                            handleSelectSlot(slot);
+                                        }} 
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Individual Master Cards */}
+                            {employees.map((emp: any) => {
+                                const isSelected = selectedEmployee?.id === emp.id;
+                                return (
+                                    <div 
+                                        key={emp.id} 
+                                        onClick={() => handleSelectSpecialist(emp)} 
+                                        className={cn(
+                                            "relative p-6 rounded-[2.5rem] border-2 transition-all duration-300 cursor-pointer bg-white shadow-sm hover:shadow-xl active:scale-[0.98]",
+                                            isSelected ? "border-neutral-900 ring-4 ring-neutral-900/5" : "border-neutral-100 hover:border-neutral-200"
+                                        )}
+                                        style={{ borderColor: isSelected ? accentColor : undefined }}
+                                    >
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-5">
+                                                <div className="relative">
+                                                    <Avatar className="h-16 w-16 rounded-3xl ring-4 ring-neutral-50 shadow-inner">
+                                                        <AvatarImage src={emp.avatar_url} />
+                                                        <AvatarFallback className="font-black text-lg bg-neutral-100 text-neutral-400">{emp.name?.[0]}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 border-2 border-white rounded-full shadow-sm" />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xl font-black tracking-tight" style={{ color: textColor }}>{emp.name}</span>
+                                                    <span className="text-sm font-bold opacity-40" style={{ color: textColor }}>{emp.position || 'Специалист'}</span>
+                                                </div>
+                                            </div>
+                                            {isSelected && <div className="h-8 w-8 rounded-full flex items-center justify-center shadow-lg" style={{ backgroundColor: accentColor }}><Check className="h-5 w-5 stroke-[4]" style={{ color: accentColor === '#F5FF82' ? '#000' : '#fff' }} /></div>}
+                                        </div>
+                                        
+                                        <div className="pt-4 border-t border-neutral-50">
+                                            <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-300 mb-3">Ближайшее время:</p>
+                                            <EmployeeAvailableSlots 
+                                                employeeIds={emp.id} 
+                                                mode="compact" 
+                                                duration={totalDuration}
+                                                onSlotSelect={(slot) => {
+                                                    setSelectedEmployee(emp);
+                                                    handleSelectSlot(slot);
+                                                }} 
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
@@ -264,7 +428,7 @@ export function BookingWidget({
                                             const isSelected = selectedServices.some(s => s.id === svc.id);
                                             return (
                                                 <div key={svc.id} onClick={() => handleSelectService(svc)} className="p-5 flex items-center justify-between cursor-pointer border-2 transition-all active:scale-[0.98]" style={{ backgroundColor: isSelected ? accentColor : cardBg, borderColor: isSelected ? accentColor : borderColor, borderRadius: `${borderRadius}px` }}>
-                                                    <div className="flex flex-col text-left"><span className="text-lg font-bold tracking-tight" style={{ color: textColor }}>{svc.name}</span><div className="flex items-center gap-3 mt-1 opacity-50 font-black text-[10px] uppercase tracking-widest" style={{ color: textColor }}><span>{getEmployeeServiceDuration(svc, selectedEmployee?.id)} мин</span><div className="w-1 h-1 rounded-full bg-current" /><span>{getEmployeeServicePrice(svc, selectedEmployee?.id)} BYN</span></div></div>
+                                                    <div className="flex flex-col text-left"><span className="text-lg font-bold tracking-tight" style={{ color: isSelected && (accentColor === '#000' || accentColor === '#171717') ? '#fff' : (isSelected ? '#000' : textColor) }}>{svc.name}</span><div className="flex items-center gap-3 mt-1 opacity-50 font-black text-[10px] uppercase tracking-widest" style={{ color: isSelected && (accentColor === '#000' || accentColor === '#171717') ? '#fff' : (isSelected ? '#000' : textColor) }}><span>{getEmployeeServiceDuration(svc, selectedEmployee?.id)} мин</span><div className="w-1 h-1 rounded-full bg-current" /><span>{getEmployeeServicePrice(svc, selectedEmployee?.id)} BYN</span></div></div>
                                                     <div className={cn("h-8 w-8 rounded-xl border-2 flex items-center justify-center transition-all", isSelected ? "bg-black border-black text-white scale-110 shadow-lg" : "border-neutral-200")}>{isSelected ? <Check className="h-5 w-5 stroke-[3]" /> : <Plus className="h-5 w-5 opacity-30" />}</div>
                                                 </div>
                                             );
@@ -280,7 +444,11 @@ export function BookingWidget({
                     <div className="space-y-8 pt-4 animate-in slide-in-from-right-8 duration-500">
                         <div className="flex items-center gap-4"><button onClick={() => setView('home')} className="h-12 w-12 rounded-2xl flex items-center justify-center border-2" style={{ borderColor: borderColor, color: textColor }}><ArrowLeft className="h-6 w-6" /></button><h2 className="text-3xl font-black tracking-tighter" style={{ color: textColor }}>Время</h2></div>
                         <div className="p-2 border-2" style={{ backgroundColor: cardBg, borderColor: borderColor, borderRadius: `${borderRadius}px` }}>
-                            <EmployeeAvailableSlots employeeId={selectedEmployee?.id} onSlotSelect={(slot: any) => handleSelectSlot(slot)} />
+                            <EmployeeAvailableSlots 
+                                employeeIds={selectedEmployee?.id || employees.map((e: any) => e.id).join(',')} 
+                                duration={totalDuration}
+                                onSlotSelect={(slot: any) => handleSelectSlot(slot)} 
+                            />
                         </div>
                     </div>
                 )}
@@ -290,9 +458,9 @@ export function BookingWidget({
                         <div className="flex items-center gap-4"><button onClick={() => setView('home')} className="h-12 w-12 rounded-2xl flex items-center justify-center border-2" style={{ borderColor: borderColor, color: textColor }}><ArrowLeft className="h-6 w-6" /></button><h2 className="text-3xl font-black tracking-tighter" style={{ color: textColor }}>Завершение</h2></div>
                         <div className="space-y-6">
                             <div className="p-6 border-2 space-y-6" style={{ backgroundColor: cardBg, borderColor: borderColor, borderRadius: `${borderRadius}px` }}>
-                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Ваше имя</Label><Input value={clientData.name} onChange={(e) => setClientData({...clientData, name: e.target.value})} className="h-16 border-2 shadow-inner font-bold text-lg px-6" style={{ backgroundColor: windowBg, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="Иван Иванов"/></div>
-                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Телефон</Label><Input value={clientData.phone} onChange={(e) => setClientData({...clientData, phone: e.target.value})} className="h-16 border-2 shadow-inner font-bold text-lg px-6" style={{ backgroundColor: windowBg, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="+375 •• ••• •• ••"/></div>
-                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Комментарий</Label><Textarea value={clientData.comment} onChange={(e) => setClientData({...clientData, comment: e.target.value})} className="min-h-[120px] border-2 shadow-inner font-bold px-6 py-4" style={{ backgroundColor: windowBg, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="Ваши пожелания..."/></div>
+                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Ваше имя</Label><Input value={clientData.name} onChange={(e) => setClientData({...clientData, name: e.target.value})} className="h-16 border-2 shadow-inner font-bold text-lg px-6" style={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="Иван Иванов"/></div>
+                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Телефон</Label><Input value={clientData.phone} onChange={(e) => setClientData({...clientData, phone: e.target.value})} className="h-16 border-2 shadow-inner font-bold text-lg px-6" style={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="+375 •• ••• •• ••"/></div>
+                                <div className="space-y-3"><Label className="text-[11px] font-black uppercase opacity-40 px-1 tracking-widest" style={{ color: textColor }}>Комментарий</Label><Textarea value={clientData.comment} onChange={(e) => setClientData({...clientData, comment: e.target.value})} className="min-h-[120px] border-2 shadow-inner font-bold px-6 py-4" style={{ backgroundColor: bgColor, borderColor: borderColor, borderRadius: `${borderRadius/1.5}px`, color: textColor }} placeholder="Ваши пожелания..."/></div>
                             </div>
                             <div className="p-6 border-2 border-dashed flex flex-col items-center justify-center" style={{ borderColor: borderColor, borderRadius: `${borderRadius}px` }}><p className="text-[10px] font-black uppercase opacity-30 text-center" style={{ color: textColor }}>Нажимая кнопку «Записаться», вы соглашаетесь с правилами предоставления услуг</p></div>
                         </div>
