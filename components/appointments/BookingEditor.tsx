@@ -220,10 +220,20 @@ export function BookingEditor({
         const startISO = formData.bookingDate.set({ hour: startH, minute: startM, second: 0, millisecond: 0 }).setZone(timezone, { keepLocalTime: true }).toISO({ suppressMilliseconds: true });
         const endISO = formData.bookingDate.set({ hour: endH, minute: endM, second: 0, millisecond: 0 }).setZone(timezone, { keepLocalTime: true }).toISO({ suppressMilliseconds: true });
 
+        // Split client name into first and last
+        const nameParts = formData.clientName.trim().split(/\s+/);
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ');
+
         // Map to exact backend format (snake_case)
         const payload = {
+            branch_id: branchId,
+            branch_name: currentBranch?.name || '',
             employee_id: master?.id,
             client_id: formData.clientID,
+            client_first_name: firstName,
+            client_last_name: lastName,
+            client_phone: formData.clientPhone,
             start_time: startISO,
             end_time: endISO,
             status: formData.status,
@@ -232,6 +242,7 @@ export function BookingEditor({
             allow_overbooking: allowOverbooking,
             services: formData.selectedServices.map(s => ({
                 service_id: s.service_id,
+                service_name: s.service?.name || '',
                 price: s.price,
                 duration_minutes: s.duration_minutes
             })),
