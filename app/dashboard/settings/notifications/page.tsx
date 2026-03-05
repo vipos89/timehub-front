@@ -1,62 +1,183 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useBranch } from '@/context/branch-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { NotificationSettings } from '@/components/dashboard/notification-settings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bell, Info } from 'lucide-react';
+import { Bell, Info, Send, Smartphone, Save } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
 
 export default function NotificationsPage() {
+    const queryClient = useQueryClient();
     const { selectedBranchID } = useBranch();
+    
+    const [tgForm, setTgForm] = useState({ token: '', adminChatId: '' });
+    const [smsForm, setSmsForm] = useState({ provider: 'rocketsms', apiKey: '' });
+
     const { data: company } = useQuery({ 
         queryKey: ['my-company'], 
         queryFn: async () => (await api.get('/companies')).data[0] || null 
     });
+    
     const { data: branches = [] } = useQuery({ 
         queryKey: ['branches', company?.id], 
         queryFn: async () => (await api.get(`/companies/${company.id}/branches`)).data, 
         enabled: !!company?.id 
     });
 
+    const { data: config } = useQuery({
+        queryKey: ['notification-config', selectedBranchID],
+        queryFn: async () => (await api.get(`/notifications/config/${selectedBranchID}`)).data,
+        enabled: !!selectedBranchID
+    });
+
+    useEffect(() => {
+        if (config) {
+            setTgForm({ token: config.telegram_token || '', adminChatId: config.telegram_chat_id || '' });
+            setSmsForm({ provider: config.sms_provider || 'rocketsms', apiKey: config.sms_api_key || '' });
+        }
+    }, [config]);
+
+    const saveConfigMutation = useMutation({
+        mutationFn: (data: any) => api.post(`/notifications/config/${selectedBranchID}`, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notification-config', selectedBranchID] });
+            toast.success('Настройки каналов сохранены');
+        }
+    });
+
+    const handleSaveTelegram = () => {
+        saveConfigMutation.mutate({ 
+            ...config, 
+            telegram_token: tgForm.token, 
+            telegram_chat_id: tgForm.adminChatId 
+        });
+    };
+
+    const handleSaveSms = () => {
+        saveConfigMutation.mutate({ 
+            ...config, 
+            sms_provider: smsForm.provider, 
+            sms_api_key: smsForm.apiKey 
+        });
+    };
+
     return (
-        <div className="max-w-6xl mx-auto p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-2xl bg-neutral-900 flex items-center justify-center text-white shadow-xl shadow-black/10">
-                        <Bell className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-black tracking-tight text-neutral-900">Уведомления</h1>
-                        <p className="text-neutral-500 font-medium">Настройка типов, каналов и параметров отправки сообщений</p>
-                    </div>
+        <div className="max-w-6xl mx-auto p-6 md:p-10 space-y-8 animate-in fade-in duration-500">
+            <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-neutral-900 flex items-center justify-center text-white shadow-xl shadow-black/10">
+                    <Bell className="h-6 w-6" />
+                </div>
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight text-neutral-900 uppercase">Уведомления</h1>
+                    <p className="text-neutral-400 font-bold uppercase text-[10px] tracking-[0.2em] mt-1">Центр управления коммуникациями</p>
                 </div>
             </div>
 
             <Tabs defaultValue="types" className="w-full">
-                <TabsList className="bg-white/50 p-1.5 rounded-2xl border border-neutral-200 backdrop-blur-sm h-14 mb-8">
-                    <TabsTrigger value="types" className="rounded-xl px-8 font-bold">Типы уведомлений</TabsTrigger>
-                    <TabsTrigger value="channels" className="rounded-xl px-8 font-bold">Каналы отправки</TabsTrigger>
-                    <TabsTrigger value="params" className="rounded-xl px-8 font-bold">Параметры отправки</TabsTrigger>
+                <TabsList className="bg-neutral-50 p-1 rounded-xl h-11 inline-flex mb-8">
+                    <TabsTrigger value="types" className="rounded-lg px-8 font-bold text-xs">Типы уведомлений</TabsTrigger>
+                    <TabsTrigger value="channels" className="rounded-lg px-8 font-bold text-xs">Каналы отправки</TabsTrigger>
+                    <TabsTrigger value="params" className="rounded-lg px-8 font-bold text-xs">Параметры</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="types" className="m-0">
                     <NotificationSettings companyId={company?.id} branches={branches} />
                 </TabsContent>
 
-                <TabsContent value="channels" className="m-0">
-                    <div className="bg-white p-12 rounded-[2.5rem] text-center space-y-4">
-                        <Info className="h-12 w-12 text-neutral-200 mx-auto" />
-                        <h3 className="text-xl font-bold">Каналы отправки</h3>
-                        <p className="text-neutral-500 max-w-md mx-auto">Здесь вы сможете настраивать глобальные параметры для Telegram, SMS и других мессенджеров.</p>
+                <TabsContent value="channels" className="m-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Telegram Config */}
+                        <Card className="rounded-[2rem] border-neutral-100 shadow-sm overflow-hidden bg-white flex flex-col">
+                            <CardHeader className="bg-neutral-900 text-white p-8 flex flex-row items-center justify-between">
+                                <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase">
+                                    <Send className="h-5 w-5 text-[#F5FF82]" /> Telegram
+                                </CardTitle>
+                                <button 
+                                    onClick={handleSaveTelegram}
+                                    disabled={saveConfigMutation.isPending}
+                                    className="h-8 px-4 rounded-lg bg-[#F5FF82] text-neutral-900 text-[10px] font-black uppercase hover:scale-105 transition-transform disabled:opacity-50"
+                                >
+                                    {saveConfigMutation.isPending ? '...' : 'Сохранить'}
+                                </button>
+                            </CardHeader>
+                            <CardContent className="p-8 space-y-6 flex-1">
+                                <div className="space-y-4">
+                                    <div className="grid gap-2">
+                                        <Label className="text-[10px] font-black uppercase opacity-40 ml-1">Токен бота (@BotFather)</Label>
+                                        <Input 
+                                            placeholder="7530405952:AAGQ..." 
+                                            className="h-12 rounded-xl bg-neutral-50 border-none shadow-inner font-mono text-xs"
+                                            value={tgForm.token}
+                                            onChange={(e) => setTgForm({ ...tgForm, token: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label className="text-[10px] font-black uppercase opacity-40 ml-1">ID Администратора (для тестов)</Label>
+                                        <Input 
+                                            placeholder="325845638" 
+                                            className="h-12 rounded-xl bg-neutral-50 border-none shadow-inner font-mono text-xs"
+                                            value={tgForm.adminChatId}
+                                            onChange={(e) => setTgForm({ ...tgForm, adminChatId: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* SMS Config */}
+                        <Card className="rounded-[2rem] border-neutral-100 shadow-sm overflow-hidden bg-white flex flex-col">
+                            <CardHeader className="bg-neutral-50 p-8 border-b border-neutral-100 flex flex-row items-center justify-between">
+                                <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase text-neutral-900">
+                                    <Smartphone className="h-5 w-5 text-neutral-400" /> SMS Шлюз
+                                </CardTitle>
+                                <button 
+                                    onClick={handleSaveSms}
+                                    disabled={saveConfigMutation.isPending}
+                                    className="h-8 px-4 rounded-lg bg-neutral-900 text-white text-[10px] font-black uppercase hover:scale-105 transition-transform disabled:opacity-50"
+                                >
+                                    {saveConfigMutation.isPending ? '...' : 'Сохранить'}
+                                </button>
+                            </CardHeader>
+                            <CardContent className="p-8 space-y-6 flex-1">
+                                <div className="space-y-4">
+                                    <div className="grid gap-2">
+                                        <Label className="text-[10px] font-black uppercase opacity-40 ml-1">Провайдер</Label>
+                                        <Select value={smsForm.provider} onValueChange={(val) => setSmsForm({ ...smsForm, provider: val })}>
+                                            <SelectTrigger className="h-12 rounded-xl bg-neutral-50 border-none shadow-inner font-bold">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="rocketsms">RocketSMS.by</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label className="text-[10px] font-black uppercase opacity-40 ml-1">API Ключ (логин:пароль)</Label>
+                                        <Input 
+                                            placeholder="user:pass" 
+                                            className="h-12 rounded-xl bg-neutral-50 border-none shadow-inner font-mono text-xs"
+                                            value={smsForm.apiKey}
+                                            onChange={(e) => setSmsForm({ ...smsForm, apiKey: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
                 </TabsContent>
 
                 <TabsContent value="params" className="m-0">
-                    <div className="bg-white p-12 rounded-[2.5rem] text-center space-y-4">
+                    <div className="bg-white p-12 rounded-[2.5rem] border border-neutral-100 text-center space-y-4 shadow-sm">
                         <Info className="h-12 w-12 text-neutral-200 mx-auto" />
-                        <h3 className="text-xl font-bold">Параметры отправки</h3>
-                        <p className="text-neutral-500 max-w-md mx-auto">Настройка времени тишины, ограничений по количеству сообщений и других системных параметров.</p>
+                        <h3 className="text-xl font-bold text-neutral-900 uppercase tracking-tight">Параметры отправки</h3>
+                        <p className="text-neutral-500 max-w-md mx-auto text-sm font-medium">Настройка времени тишины, ограничений по количеству сообщений и других системных параметров.</p>
                     </div>
                 </TabsContent>
             </Tabs>

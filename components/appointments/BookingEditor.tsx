@@ -207,10 +207,28 @@ export function BookingEditor({
         return () => clearTimeout(timer);
     }, [formData.clientName, formData.clientPhone, branchId, activeSearchField]);
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && showClientDropdown) {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowClientDropdown(false);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown, true);
+        return () => document.removeEventListener('keydown', handleKeyDown, true);
+    }, [showClientDropdown]);
+
     const handleSelectCustomer = (c: any) => {
-        setFormData({ ...formData, clientName: `${c.first_name} ${c.last_name || ''}`.trim(), clientPhone: c.phone || '', clientEmail: c.email || '', clientID: c.id || null });
+        setFormData({ ...formData, clientName: `${c.first_name} ${c.last_name || ''}`.trim(), clientPhone: c.phone || '', clientEmail: c.email || '', clientID: c.id || null, isGuest: false });
         setSearchResults([]); setShowClientDropdown(false); setActiveSearchField(null);
         if (c.id) fetchCustomerStats(c.id);
+    };
+
+    const handleCreateNewClient = () => {
+        setFormData({ ...formData, clientID: null, isGuest: true });
+        setShowClientDropdown(false);
+        setActiveSearchField(null);
     };
 
     const executeSave = async (allowOverbooking = false) => {
@@ -227,6 +245,7 @@ export function BookingEditor({
 
         // Map to exact backend format (snake_case)
         const payload = {
+            company_id: company?.id,
             branch_id: branchId,
             branch_name: currentBranch?.name || '',
             employee_id: master?.id,
@@ -359,6 +378,18 @@ export function BookingEditor({
                                 <ChevronRight className="h-4 w-4 text-neutral-200 group-hover:text-neutral-900 transition-all group-hover:translate-x-1" />
                             </div>
                         ))}
+                        <div 
+                            onClick={handleCreateNewClient}
+                            className="p-4 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 text-neutral-600 transition-colors group"
+                        >
+                            <div className="w-10 h-10 bg-neutral-100 rounded-xl flex items-center justify-center text-neutral-400 group-hover:bg-neutral-900 group-hover:text-[#F5FF82] transition-colors">
+                                <Plus className="w-5 h-5" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-sm font-bold group-hover:text-neutral-900">Новый клиент</span>
+                                <span className="text-[10px] font-medium uppercase tracking-tight opacity-60">Использовать введенные данные</span>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
@@ -369,6 +400,9 @@ export function BookingEditor({
         <>
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent showCloseButton={false} className="sm:max-w-[1400px] w-[98vw] p-0 overflow-hidden bg-white rounded-[1.5rem] border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)] h-[92vh] flex flex-col">
+                <DialogTitle className="sr-only">Редактор записи</DialogTitle>
+                <DialogDescription className="sr-only">Управление деталями бронирования, услугами и клиентом</DialogDescription>
+                
                 <div className="h-16 border-b border-neutral-100 flex items-center justify-between px-6 shrink-0">
                     <div className="flex gap-1.5 p-1 bg-neutral-100 rounded-xl">
                         {[

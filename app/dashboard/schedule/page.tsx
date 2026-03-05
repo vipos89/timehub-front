@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 const DAYS = [
     { id: 1, name: 'Понедельник' },
@@ -39,7 +40,8 @@ export default function SchedulePage() {
     // Derived month start for data fetching
     const dataMonth = currentDate.startOf('month').toISODate()!;
 
-    const [editingShift, setEditingShift] = useState<{ empID: number; date: string } | null>(null);
+    const [selectedCells, setSelectedCells] = useState<Array<{ empID: number; date: string }>>([]);
+    const [isEditing, setIsEditing] = useState(false);
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [newShift, setNewShift] = useState({ start: '09:00', end: '21:00', shiftType: 'work' });
     const [generatorData, setGeneratorData] = useState({
@@ -90,7 +92,8 @@ export default function SchedulePage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['shifts'] });
             toast.success('График обновлен');
-            setEditingShift(null);
+            setSelectedCells([]);
+            setIsEditing(false);
             setIsGeneratorOpen(false);
         },
     });
@@ -156,12 +159,12 @@ export default function SchedulePage() {
     };
 
     const handleCellClick = (empID: number, day: DateTime) => {
-        const existing = getShiftForMaster(empID, day);
-        setEditingShift({ empID, date: day.toISODate()! });
-        if (existing) {
-            setNewShift({ start: existing.start_time, end: existing.end_time, shiftType: existing.shift_type || 'work' });
+        const dateStr = day.toISODate()!;
+        const isSelected = selectedCells.some(c => c.empID === empID && c.date === dateStr);
+        if (isSelected) {
+            setSelectedCells(prev => prev.filter(c => !(c.empID === empID && c.date === dateStr)));
         } else {
-            setNewShift({ start: '09:00', end: '21:00', shiftType: 'work' });
+            setSelectedCells(prev => [...prev, { empID, date: dateStr }]);
         }
     };
 
@@ -175,16 +178,29 @@ export default function SchedulePage() {
         window.open(url, '_blank');
     };
 
-    const handleSaveShift = () => {
-        if (!editingShift) return;
-        saveShiftMutation.mutate([{
-            employee_id: editingShift.empID,
+    const handleBulkAction = (shiftType: string) => {
+        const payload = selectedCells.map(c => ({
+            employee_id: c.empID,
             branch_id: parseInt(selectedBranchID),
-            date: editingShift.date + 'T00:00:00Z',
+            date: c.date + 'T00:00:00Z',
+            start_time: '09:00', // default, ignored if not work
+            end_time: '21:00', // default, ignored if not work
+            shift_type: shiftType,
+        }));
+        saveShiftMutation.mutate(payload);
+    };
+
+    const handleSaveShift = () => {
+        if (selectedCells.length === 0) return;
+        const payload = selectedCells.map(c => ({
+            employee_id: c.empID,
+            branch_id: parseInt(selectedBranchID),
+            date: c.date + 'T00:00:00Z',
             start_time: newShift.start,
             end_time: newShift.end,
             shift_type: newShift.shiftType,
-        }]);
+        }));
+        saveShiftMutation.mutate(payload);
     };
 
 
@@ -416,34 +432,44 @@ export default function SchedulePage() {
                                     </td>
                                     {days.map((day) => {
                                         const shift = getShiftForMaster(emp.id, day);
+                                        const dateStr = day.toISODate()!;
+                                        const isSelected = selectedCells.some(c => c.empID === emp.id && c.date === dateStr);
+                                        
                                         return (
                                             <td
                                                 key={day.toISO()}
                                                 onClick={() => handleCellClick(emp.id, day)}
-                                                className={`border-b border-r border-neutral-50 p-1 text-center group cursor-pointer hover:bg-neutral-100/50 transition-colors ${day.weekday > 5 ? 'bg-orange-50/10' : ''}`}
+                                                className={cn(
+                                                    "border-b border-r border-neutral-50 p-1 text-center group cursor-pointer transition-colors relative",
+                                                    day.weekday > 5 ? 'bg-orange-50/10' : '',
+                                                    isSelected ? 'bg-neutral-100/80 ring-2 ring-inset ring-neutral-900' : 'hover:bg-neutral-100/50'
+                                                )}
                                             >
                                                 {shift ? (() => {
                                                     const shiftType = shift.shift_type || (shift.is_day_off ? 'day_off' : 'work');
                                                     const typeConfig = {
                                                         work: { bg: 'bg-green-100/80', border: 'border-green-200', text: 'text-green-700', label: '' },
-                                                        day_off: { bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'text-neutral-400', label: 'Вых' },
+                                                        day_off: { bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'text-neutral-400', label: 'ВЫХ' },
                                                         sick_leave: { bg: 'bg-yellow-100/80', border: 'border-yellow-200', text: 'text-yellow-700', label: 'Б/Л' },
-                                                        vacation: { bg: 'bg-blue-100/80', border: 'border-blue-200', text: 'text-blue-700', label: 'Отп' },
-                                                        unpaid_leave: { bg: 'bg-purple-100/80', border: 'border-purple-200', text: 'text-purple-700', label: 'За свой счет' },
-                                                        absence: { bg: 'bg-red-100/80', border: 'border-red-200', text: 'text-red-700', label: 'Прогул' },
+                                                        vacation: { bg: 'bg-blue-100/80', border: 'border-blue-200', text: 'text-blue-700', label: 'ОТП' },
+                                                        unpaid_leave: { bg: 'bg-purple-100/80', border: 'border-purple-200', text: 'text-purple-700', label: 'С/С' },
+                                                        absence: { bg: 'bg-red-100/80', border: 'border-red-200', text: 'text-red-700', label: 'ПРГ' },
                                                     };
                                                     const config = typeConfig[shiftType as keyof typeof typeConfig] || typeConfig.work;
                                                     
-                                                    if (shiftType !== 'work') return null;
-
-                                                    const start = DateTime.fromFormat(shift.start_time, 'HH:mm');
-                                                    const end = DateTime.fromFormat(shift.end_time, 'HH:mm');
-                                                    const duration = Math.max(0, end.diff(start, 'hours').hours - 1);
-
                                                     return (
-                                                        <div className={`${config.bg} border ${config.border} rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm`}>
-                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.start_time}</span>
-                                                            <span className={`text-[10px] font-bold ${config.text} leading-tight`}>{shift.end_time}</span>
+                                                        <div className={cn(
+                                                            config.bg, "border", config.border, 
+                                                            "rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm min-h-[40px]"
+                                                        )}>
+                                                            {shiftType === 'work' ? (
+                                                                <>
+                                                                    <span className={cn("text-[10px] font-bold leading-tight", config.text)}>{shift.start_time}</span>
+                                                                    <span className={cn("text-[10px] font-bold leading-tight", config.text)}>{shift.end_time}</span>
+                                                                </>
+                                                            ) : (
+                                                                <span className={cn("text-[10px] font-black leading-tight", config.text)}>{config.label}</span>
+                                                            )}
                                                         </div>
                                                     );
                                                 })() : (
@@ -464,12 +490,12 @@ export default function SchedulePage() {
             </div>
 
             {/* Edit Shift Dialog */}
-            <Dialog open={!!editingShift} onOpenChange={(open) => !open && setEditingShift(null)}>
+            <Dialog open={isEditing} onOpenChange={(open) => !open && setIsEditing(false)}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle>Настройка смены</DialogTitle>
+                        <DialogTitle>Настройка смен ({selectedCells.length})</DialogTitle>
                         <DialogDescription>
-                            Укажите рабочие часы для сотрудника на {editingShift ? DateTime.fromISO(editingShift.date).setLocale('ru').toFormat('dd LLLL') : ''}
+                            Укажите рабочие часы для выбранных дней
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -515,13 +541,27 @@ export default function SchedulePage() {
                         )}
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setEditingShift(null)}>Отмена</Button>
+                        <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>Отмена</Button>
                         <Button type="submit" onClick={handleSaveShift} disabled={saveShiftMutation.isPending}>
                             {saveShiftMutation.isPending ? "Сохранение..." : "Сохранить"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Floating Selection Bar */}
+            {selectedCells.length > 0 && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-neutral-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-8">
+                    <span className="font-bold text-sm">Выбрано: {selectedCells.length}</span>
+                    <div className="h-6 w-px bg-white/20" />
+                    <div className="flex gap-2">
+                        <Button size="sm" onClick={() => { setNewShift({ start: '09:00', end: '21:00', shiftType: 'work' }); setIsEditing(true); }} className="bg-white text-black hover:bg-neutral-100 font-bold rounded-xl h-9">Настроить</Button>
+                        <Button size="sm" onClick={() => handleBulkAction('day_off')} className="bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl h-9 border-none">Выходной</Button>
+                        <Button size="sm" onClick={() => handleBulkAction('sick_leave')} className="bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl h-9 border-none">Больничный</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSelectedCells([])} className="hover:bg-white/10 text-white font-bold rounded-xl h-9">Отмена</Button>
+                    </div>
+                </div>
+            )}
 
             {/* Shift Generator Dialog */}
             <Dialog open={isGeneratorOpen} onOpenChange={setIsGeneratorOpen}>
