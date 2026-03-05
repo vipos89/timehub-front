@@ -44,6 +44,11 @@ const navItems = [
         icon: BookOpen,
     },
     {
+        title: 'Клиенты',
+        url: '/dashboard/customers',
+        icon: Users,
+    },
+    {
         title: 'График работы',
         url: '/dashboard/schedule',
         icon: Calendar,
