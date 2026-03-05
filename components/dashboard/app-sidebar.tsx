@@ -39,34 +39,19 @@ const navItems = [
         icon: LayoutDashboard,
     },
     {
-        title: 'Компания',
-        url: '/dashboard/company',
-        icon: Building2,
-    },
-    {
-        title: 'Персонал',
-        url: '/dashboard/staff',
-        icon: Users,
-    },
-    {
-        title: 'Услуги',
-        url: '/dashboard/services',
-        icon: Scissors,
-    },
-    {
-        title: 'Расписание',
-        url: '/dashboard/schedule',
-        icon: Calendar,
-    },
-    {
         title: 'Записи',
         url: '/dashboard/appointments',
         icon: BookOpen,
     },
     {
-        title: 'Виджеты',
-        url: '/dashboard/widgets',
-        icon: AppWindow,
+        title: 'График работы',
+        url: '/dashboard/schedule',
+        icon: Calendar,
+    },
+    {
+        title: 'Настройки',
+        url: '/dashboard/settings',
+        icon: Settings,
     },
 ];
 

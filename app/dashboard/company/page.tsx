@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
     Building2, MapPin, Phone, Mail, Globe, Instagram, Send, Plus, Trash2, Pencil, Save, 
-    FileText, Users, Info, Smartphone, Share2, Check, X, Clock, Calendar, ChevronLeft, ChevronRight
+    FileText, Users, Info, Smartphone, Share2, Check, X, Clock, Calendar, ChevronLeft, ChevronRight,
+    Bell
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -20,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { NotificationSettings } from '@/components/dashboard/notification-settings';
 
 const DAYS = [
     { id: 1, name: 'Понедельник', short: 'ПН' },
@@ -179,6 +181,7 @@ export default function CompanyPage() {
                     <TabsTrigger value="branches" className="rounded-xl px-6 font-bold">Филиалы</TabsTrigger>
                     <TabsTrigger value="legal" className="rounded-xl px-6 font-bold">Юр. данные</TabsTrigger>
                     <TabsTrigger value="social" className="rounded-xl px-6 font-bold">Соцсети</TabsTrigger>
+                    <TabsTrigger value="notifications" className="rounded-xl px-6 font-bold">Уведомления</TabsTrigger>
                 </TabsList>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -259,6 +262,10 @@ export default function CompanyPage() {
                                     ))}
                                 </div>
                             </Card>
+                        </TabsContent>
+
+                        <TabsContent value="notifications" className="m-0">
+                            <NotificationSettings companyId={company?.id} branches={branches} />
                         </TabsContent>
                     </div>
 
