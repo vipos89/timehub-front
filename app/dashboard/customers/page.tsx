@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, UserCircle, Phone, Mail, History, UserX, ExternalLink, MoreVertical, Pencil, Trash2, Calendar as CalendarIcon, Filter, ArrowUpDown, X } from 'lucide-react';
+import { Plus, Search, UserCircle, Phone, Mail, History, UserX, ExternalLink, MoreVertical, Pencil, Trash2, Calendar as CalendarIcon, Filter, ArrowUpDown, X, ArrowLeftRight, User, MoreHorizontal, Edit2, Camera } from 'lucide-react';
 import { toast } from 'sonner';
 import { useBranch } from '@/context/branch-context';
 import { format } from 'date-fns';
@@ -45,11 +45,10 @@ export default function CustomersPage() {
     const { selectedBranchID } = useBranch();
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'name' | 'recent'>('name');
-    const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
-    const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
-    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentCustomer, setCurrentCustomer] = useState<any>(null);
     const [notificationFilter, setNotificationFilter] = useState<string>('all');
+    const [activeTab, setActiveTab] = useState<string>('info');
     const [formData, setFormData] = useState({
         first_name: '',
         last_name: '',
@@ -98,7 +97,7 @@ export default function CustomersPage() {
             const res = await api.get(`/customers/${currentCustomer.id}/visits`);
             return res.data;
         },
-        enabled: !!currentCustomer?.id && isDetailsOpen,
+        enabled: !!currentCustomer?.id && isModalOpen,
     });
 
     const { data: customerNotifications, isLoading: isLoadingNotifications } = useQuery({
@@ -107,8 +106,16 @@ export default function CustomersPage() {
             const res = await api.get(`/customers/${currentCustomer.id}/notifications`);
             return res.data;
         },
-        enabled: !!currentCustomer?.id && isDetailsOpen,
+        enabled: !!currentCustomer?.id && isModalOpen,
     });
+
+    // Calculate detailed visit stats
+    const visitStats = {
+        total: customerVisits?.length || 0,
+        arrived: customerVisits?.filter((v: any) => v.status === 'finished' || v.status === 'arrived').length || 0,
+        pending: customerVisits?.filter((v: any) => v.status === 'pending' || v.status === 'confirmed').length || 0,
+        noShow: customerVisits?.filter((v: any) => v.status === 'no_show').length || 0,
+    };
 
     // Mutations
     const addCustomerMutation = useMutation({
@@ -116,7 +123,7 @@ export default function CustomersPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['customers'] });
             toast.success('Клиент успешно добавлен');
-            setIsAddCustomerOpen(false);
+            setIsModalOpen(false);
             resetForm();
         },
         onError: (err: any) => {
@@ -126,12 +133,11 @@ export default function CustomersPage() {
 
     const updateCustomerMutation = useMutation({
         mutationFn: (data: { id: number; payload: any }) => api.put(`/customers/${data.id}`, data.payload),
-        onSuccess: () => {
+        onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['customers'] });
             toast.success('Данные клиента обновлены');
-            setIsEditCustomerOpen(false);
-            resetForm();
-            setCurrentCustomer(null);
+            setCurrentCustomer(res.data);
+            // We stay in the modal after update as per current behavior
         },
         onError: (err: any) => {
             toast.error(err.response?.data?.error || 'Ошибка при обновлении данных');
@@ -146,6 +152,8 @@ export default function CustomersPage() {
             phone: '',
             notes: '',
         });
+        setCurrentCustomer(null);
+        setActiveTab('info');
     };
 
     const handleEditClick = (e: React.MouseEvent, customer: any) => {
@@ -158,12 +166,19 @@ export default function CustomersPage() {
             phone: customer.phone || '',
             notes: customer.notes || '',
         });
-        setIsEditCustomerOpen(true);
+        setIsModalOpen(true);
     };
 
     const handleCustomerClick = (customer: any) => {
         setCurrentCustomer(customer);
-        setIsDetailsOpen(true);
+        setFormData({
+            first_name: customer.first_name || '',
+            last_name: customer.last_name || '',
+            email: customer.email || '',
+            phone: customer.phone || '',
+            notes: customer.notes || '',
+        });
+        setIsModalOpen(true);
     };
 
     const handleSave = () => {
@@ -172,7 +187,7 @@ export default function CustomersPage() {
             branch_id: selectedBranchID ? parseInt(selectedBranchID) : 0,
         };
 
-        if (isEditCustomerOpen && currentCustomer) {
+        if (currentCustomer) {
             updateCustomerMutation.mutate({ id: currentCustomer.id, payload });
         } else {
             addCustomerMutation.mutate(payload);
@@ -187,7 +202,7 @@ export default function CustomersPage() {
                     <p className="text-neutral-500 mt-2 font-medium">База ваших клиентов и история их посещений.</p>
                 </div>
                 <Button 
-                    onClick={() => { resetForm(); setIsAddCustomerOpen(true); }}
+                    onClick={() => { resetForm(); setIsModalOpen(true); }}
                     className="bg-neutral-900 text-white hover:bg-black gap-2 transition-all shadow-xl shadow-black/10 rounded-xl h-12 px-6 font-bold"
                 >
                     <Plus className="h-5 w-5" /> Добавить клиента
@@ -301,322 +316,481 @@ export default function CustomersPage() {
                 </CardContent>
             </Card>
 
-            <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-                <DialogContent showCloseButton={false} className="sm:max-w-[1400px] w-[98vw] p-0 overflow-hidden bg-white rounded-[1.5rem] border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)] h-[92vh] flex flex-col">
-                    <DialogTitle className="sr-only">Профиль клиента</DialogTitle>
-                    <DialogDescription className="sr-only">Детальная информация о клиенте, история визитов и лог уведомлений</DialogDescription>
-                    
-                    {/* Header */}
-                    <div className="h-16 border-b border-neutral-100 flex items-center justify-between px-6 shrink-0 bg-white z-10">
-                        <div className="flex items-center gap-4">
-                            <Badge variant="outline" className="bg-neutral-50 text-neutral-400 border-neutral-100 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl">
-                                Профиль клиента #{currentCustomer?.id}
-                            </Badge>
+            {/* Integrated Details/Edit Modal */}
+            <Dialog open={isModalOpen} onOpenChange={(open) => {
+                if (!open) { 
+                    setIsModalOpen(false); 
+                    // Use a timeout to reset after transition
+                    setTimeout(resetForm, 300);
+                }
+            }}>
+                <DialogContent className="sm:max-w-[1400px] w-[98vw] h-[92vh] p-0 overflow-hidden border-none rounded-[2rem] shadow-2xl bg-white">
+                    <div className="flex flex-col h-full relative">
+                        {/* Header: Fixed top-right close */}
+                        <div className="shrink-0 h-16 border-b border-neutral-100 flex items-center justify-between px-6 bg-white z-50">
+                            <div className="flex items-center gap-4">
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-9 rounded-xl border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-900 gap-2"
+                                >
+                                    <ArrowLeftRight className="h-3.5 w-3.5" /> Сменить клиента
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="h-9 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-900 group"
+                                >
+                                    Закрыть <X className="ml-2 h-3.5 w-3.5 transition-transform group-hover:rotate-90" />
+                                </Button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={(e) => { setIsDetailsOpen(false); handleEditClick(e, currentCustomer); }}
-                                className="h-10 rounded-xl font-bold gap-2 text-neutral-400 hover:text-neutral-900 hover:bg-neutral-50 transition-all"
-                            >
-                                <Pencil className="h-4 w-4" />
-                                <span className="text-[10px] font-black uppercase tracking-widest italic">Редактировать</span>
-                            </Button>
-                            <div className="w-px h-6 bg-neutral-100 mx-1" />
-                            <Button variant="ghost" size="icon" onClick={() => setIsDetailsOpen(false)} className="text-neutral-300 hover:text-black rounded-xl h-10 w-10">
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </div>
-                    </div>
 
-                    <div className="flex-1 grid grid-cols-[320px_1fr_320px] overflow-hidden">
-                        {/* Left Column: Basic Info */}
-                        <div className="border-r border-neutral-100 p-8 flex flex-col gap-8 overflow-y-auto custom-scrollbar bg-white">
-                            <div className="space-y-6">
-                                <div className="flex flex-col items-center text-center gap-4">
-                                    <Avatar className="h-28 w-28 border-4 border-neutral-50 shadow-md ring-1 ring-neutral-100">
-                                        <AvatarFallback className="bg-neutral-900 text-white font-black text-3xl italic">
-                                            {currentCustomer?.first_name?.[0] || '?'}{currentCustomer?.last_name?.[0] || ''}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="space-y-1">
-                                        <h2 className="text-2xl font-black uppercase tracking-tight text-neutral-900 italic leading-tight">
-                                            {currentCustomer?.first_name}<br />{currentCustomer?.last_name}
-                                        </h2>
-                                        <p className="text-neutral-400 text-xs font-bold tracking-widest uppercase italic mt-2">
-                                            Клиент с {currentCustomer?.created_at ? format(new Date(currentCustomer.created_at), 'MMM yyyy', { locale: ru }) : '—'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="h-px bg-neutral-100 w-full" />
-
-                                <div className="space-y-5">
-                                    <h4 className="text-[10px] font-black uppercase text-neutral-400 tracking-[0.2em] px-1">Контакты</h4>
+                        <div className="flex-1 flex overflow-hidden">
+                            {/* LEFT COLUMN: Profile & Quick Info */}
+                            <aside className="w-[280px] bg-neutral-50/30 border-r border-neutral-100 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+                                <div className="p-6 space-y-8">
+                                    {/* Profile Info */}
                                     <div className="space-y-4">
-                                        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-1 group hover:border-neutral-200 transition-all">
-                                            <span className="text-[9px] font-black uppercase text-neutral-300 tracking-widest">Телефон</span>
-                                            <div className="flex items-center gap-3 text-sm font-bold text-neutral-900">
-                                                <div className="p-1.5 bg-white rounded-lg shadow-sm border border-neutral-100 text-neutral-400">
-                                                    <Phone className="h-3.5 w-3.5" />
-                                                </div>
-                                                {currentCustomer?.phone}
-                                            </div>
+                                        <div className="space-y-1">
+                                            <h2 className="text-xl font-black text-neutral-900 leading-tight uppercase italic tracking-tight">
+                                                {currentCustomer ? (
+                                                    `${formData.first_name} ${formData.last_name || ''}`
+                                                ) : (
+                                                    formData.first_name || "Новый клиент"
+                                                )}
+                                            </h2>
+                                            <p className="text-xs font-bold text-neutral-400 tracking-tight">{formData.phone || "—"}</p>
                                         </div>
-                                        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100 space-y-1 group hover:border-neutral-200 transition-all">
-                                            <span className="text-[9px] font-black uppercase text-neutral-300 tracking-widest">Email</span>
-                                            <div className="flex items-center gap-3 text-sm font-bold text-neutral-900">
-                                                <div className="p-1.5 bg-white rounded-lg shadow-sm border border-neutral-100 text-neutral-400">
-                                                    <Mail className="h-3.5 w-3.5" />
+
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Button variant="outline" className="h-10 w-10 p-0 rounded-full border-neutral-200 hover:bg-white shadow-sm">
+                                                    <User className="h-4 w-4 text-neutral-400" />
+                                                </Button>
+                                                <Button variant="outline" className="h-10 w-10 p-0 rounded-full border-neutral-200 hover:bg-white shadow-sm">
+                                                    <MoreHorizontal className="h-4 w-4 text-neutral-400" />
+                                                </Button>
+                                            </div>
+                                            
+                                            <Button 
+                                                variant="outline" 
+                                                className="w-full h-11 bg-white border-neutral-200 rounded-xl gap-3 text-[10px] font-black uppercase tracking-widest shadow-sm hover:border-neutral-900 transition-all"
+                                            >
+                                                <History className="h-4 w-4 text-neutral-400" /> История посещений
+                                            </Button>
+
+                                            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200 transition-all">
+                                                <div className="h-4 w-4 rounded border border-neutral-300 flex items-center justify-center">
+                                                    {/* Checkbox */}
                                                 </div>
-                                                <span className="truncate">{currentCustomer?.email || 'Не указан'}</span>
+                                                <span className="text-[9px] font-black text-neutral-400 uppercase tracking-tight leading-none">Записывает другого посетителя</span>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
 
-                            <div className="mt-auto pt-6 border-t border-neutral-100">
-                                <div className="p-5 bg-neutral-900 rounded-[2rem] shadow-xl shadow-black/10 text-center space-y-1">
-                                    <span className="text-[9px] font-black uppercase text-neutral-500 tracking-[0.2em]">Выручка</span>
-                                    <div className="text-2xl font-black text-[#F5FF82] italic tracking-tight">
-                                        {currentCustomer?.stats?.total_revenue?.toLocaleString() || 0} ₽
+                                    {/* Additional Info Section */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Дополнительно</h4>
+                                        <Button variant="ghost" className="w-full justify-start h-9 px-0 text-neutral-400 hover:text-neutral-900 text-[10px] font-bold uppercase tracking-widest gap-2">
+                                            <Plus className="h-3 w-3" /> Добавить примечание
+                                        </Button>
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Дополнительный телефон</span>
+                                            <p className="text-sm font-bold text-neutral-900 italic">—</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Network Data Section */}
+                                    <div className="space-y-6 pt-6 border-t border-neutral-100">
+                                        <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Данные по сети</h4>
+                                        <div className="space-y-5">
+                                            <p className="text-xs font-black text-neutral-400 italic uppercase tracking-wider">BeardClub</p>
+                                            
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-6">
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Последний визит</span>
+                                                    <p className="text-[11px] font-black text-neutral-900 italic leading-tight">06.03 09:15</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Всего визитов</span>
+                                                    <p className="text-lg font-black text-neutral-900 italic leading-none">{visitStats.total}</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Баланс</span>
+                                                    <p className="text-xs font-black text-neutral-900 italic leading-none">0</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Продано</span>
+                                                    <p className="text-xs font-black text-neutral-900 italic leading-none">
+                                                        {Math.round(currentCustomer?.stats?.total_revenue || 0).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Оплачено</span>
+                                                    <p className="text-xs font-black text-neutral-900 italic leading-none">
+                                                        {Math.round(currentCustomer?.stats?.total_revenue || 0).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* App Info Section */}
+                                    <div className="space-y-4 pt-6 border-t border-neutral-100">
+                                        <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Данные записи</h4>
+                                        <div className="space-y-1">
+                                            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Дата создания</span>
+                                            <p className="text-xs font-bold text-neutral-900 italic">—</p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
+                            </aside>
 
-                        {/* Middle Column: Visits & Notifications */}
-                        <div className="border-r border-neutral-100 flex flex-col overflow-hidden bg-neutral-50/30">
-                            <Tabs defaultValue="visits" className="flex-1 flex flex-col overflow-hidden">
-                                <div className="bg-white px-8 border-b border-neutral-100 shrink-0 h-16 flex items-center">
-                                    <TabsList className="bg-transparent h-full p-0 gap-10">
-                                        <TabsTrigger value="visits" className="h-full border-b-2 border-transparent data-[state=active]:border-neutral-900 data-[state=active]:bg-transparent rounded-none px-0 font-black uppercase text-[10px] tracking-widest text-neutral-400 data-[state=active]:text-neutral-900 transition-all italic">История визитов</TabsTrigger>
-                                        <TabsTrigger value="notifications" className="h-full border-b-2 border-transparent data-[state=active]:border-neutral-900 data-[state=active]:bg-transparent rounded-none px-0 font-black uppercase text-[10px] tracking-widest text-neutral-400 data-[state=active]:text-neutral-900 transition-all italic">Лог уведомлений</TabsTrigger>
-                                    </TabsList>
-                                </div>
+                            {/* CENTER COLUMN: Data Form */}
+                            <main className="flex-1 bg-white border-r border-neutral-100 flex flex-col overflow-hidden relative shadow-[20px_0_50px_rgba(0,0,0,0.02)] z-10">
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+                                    <div className="px-8 pt-8 pb-4 flex items-center justify-start shrink-0">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 bg-neutral-50 rounded-full flex items-center justify-center border border-neutral-100">
+                                                <User className="h-5 w-5 text-neutral-300" />
+                                            </div>
+                                            <h2 className="text-xl font-black text-neutral-900 uppercase italic tracking-tight">Данные клиента</h2>
+                                        </div>
+                                    </div>
 
-                                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                                    <TabsContent value="visits" className="m-0 space-y-4">
-                                        {isLoadingVisits ? (
-                                            <div className="text-center py-20 text-neutral-400 italic text-sm">Загрузка истории...</div>
-                                        ) : customerVisits?.length > 0 ? (
-                                            customerVisits.map((visit: any) => (
-                                                <div key={visit.id} className="bg-white p-5 rounded-[1.5rem] border border-neutral-100 shadow-sm flex items-center justify-between group hover:border-neutral-200 transition-all">
-                                                    <div className="flex items-center gap-6">
-                                                        <div className="flex flex-col items-center justify-center h-16 w-16 bg-neutral-50 rounded-2xl border border-neutral-100 shrink-0 group-hover:bg-white transition-colors">
-                                                            <span className="text-[10px] font-black uppercase text-neutral-400 leading-none mb-1 tracking-widest">
-                                                                {format(new Date(visit.start_time), 'MMM', { locale: ru })}
-                                                            </span>
-                                                            <span className="text-2xl font-black text-neutral-900 leading-none italic">
-                                                                {format(new Date(visit.start_time), 'd')}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex flex-col gap-1.5">
-                                                            <span className="text-sm font-black text-neutral-900 uppercase tracking-tight italic">
-                                                                {format(new Date(visit.start_time), 'EEEE, HH:mm', { locale: ru })}
-                                                            </span>
-                                                            <div className="flex items-center gap-2">
-                                                                <Badge variant="outline" className="text-[9px] font-black uppercase border-neutral-100 text-neutral-400 px-2 py-0.5 rounded-lg bg-neutral-50">
-                                                                    {visit.service_name}
-                                                                </Badge>
-                                                                <span className="text-[10px] font-bold text-neutral-400 uppercase italic tracking-wider">Мастер: {visit.employee_name}</span>
-                                                            </div>
-                                                        </div>
+                                    <div className="px-8 pb-6 shrink-0">
+                                        <div className="bg-neutral-100/50 p-1 rounded-xl h-11 flex items-center gap-1 w-fit border border-neutral-100/30">
+                                            <TabsList className="bg-transparent border-none shadow-none gap-1">
+                                                <TabsTrigger 
+                                                    value="info" 
+                                                    className="rounded-lg px-6 h-9 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-all duration-200"
+                                                >
+                                                    Данные
+                                                </TabsTrigger>
+                                                {currentCustomer && (
+                                                    <>
+                                                        <TabsTrigger 
+                                                            value="visits" 
+                                                            className="rounded-lg px-6 h-9 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-all duration-200"
+                                                        >
+                                                            Визиты
+                                                        </TabsTrigger>
+                                                        <TabsTrigger 
+                                                            value="notifications" 
+                                                            className="rounded-lg px-6 h-9 data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm text-[10px] font-bold uppercase tracking-widest text-neutral-400 transition-all duration-200"
+                                                        >
+                                                            Уведомления
+                                                        </TabsTrigger>
+                                                    </>
+                                                )}
+                                            </TabsList>
+                                        </div>
+                                        
+            
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                        <TabsContent value="info" className="m-0 p-8 space-y-8 pb-24 outline-none">
+                                            <div className="grid gap-6">
+                                                <div className="space-y-2">
+                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Имя</Label>
+                                                    <Input 
+                                                        value={formData.first_name} 
+                                                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                                                        className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Телефон</Label>
+                                                        <Input 
+                                                            value={formData.phone} 
+                                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                        />
                                                     </div>
-                                                    <div className="text-right flex flex-col items-end gap-2">
-                                                        <span className="text-xl font-black text-neutral-900 italic tracking-tight leading-none">{visit.price?.toLocaleString()} ₽</span>
-                                                        <Badge className={cn(
-                                                            "text-[9px] font-black uppercase px-2.5 py-0.5 rounded-lg border shadow-none tracking-widest",
-                                                            visit.status === 'finished' ? "bg-green-50 text-green-600 border-green-100" :
-                                                            visit.status === 'no_show' ? "bg-red-50 text-red-600 border-red-100" :
-                                                            "bg-neutral-100 text-neutral-400 border-neutral-200"
-                                                        )}>
-                                                            {visit.status === 'finished' ? 'Пришел' : visit.status === 'no_show' ? 'Не пришел' : visit.status}
-                                                        </Badge>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дополнительный телефон</Label>
+                                                        <Input 
+                                                            placeholder="+375 00 000-00-00"
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                        />
                                                     </div>
                                                 </div>
-                                            ))
-                                        ) : (
-                                            <div className="text-center py-24 text-neutral-300 italic text-sm border-2 border-dashed border-neutral-100 rounded-[2.5rem] bg-white/50">
-                                                История посещений пуста
-                                            </div>
-                                        )}
-                                    </TabsContent>
 
-                                    <TabsContent value="notifications" className="m-0 space-y-6">
-                                        <div className="flex items-center justify-between sticky top-0 bg-neutral-50/90 backdrop-blur-md py-2 z-10 -mx-2 px-2">
-                                            <div className="flex bg-white p-1 rounded-xl border border-neutral-100 shadow-sm">
+                                                <div className="space-y-2">
+                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Email</Label>
+                                                    <Input 
+                                                        value={formData.email} 
+                                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                        placeholder="example@mail.ru"
+                                                        className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дата рождения</Label>
+                                                        <Input 
+                                                            placeholder="01.01.2000"
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Пол</Label>
+                                                        <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
+                                                            <span className="text-sm font-medium text-neutral-900">Не выбран</span>
+                                                            <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Категория</Label>
+                                                    <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
+                                                        <span className="text-sm font-medium text-neutral-300">Не выбрана</span>
+                                                        <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Важность</Label>
+                                                    <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
+                                                        <span className="text-sm font-medium text-neutral-900">Без класса важности</span>
+                                                        <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
+                                                        </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Номер карты</Label>
+                                                        <Input 
+                                                            placeholder="000 000 000"
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Скидка, %</Label>
+                                                        <Input 
+                                                            defaultValue="0"
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Примечание</Label>
+                                                    <textarea 
+                                                        rows={6} 
+                                                        value={formData.notes}
+                                                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none" 
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center gap-3 py-2">
+                                                    <div className="h-5 w-5 rounded border border-neutral-200 flex items-center justify-center">
+                                                        {/* Checkbox placeholder */}
+                                                    </div>
+                                                    <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-tight">Запретить записываться через онлайн-запись</span>
+                                                </div>
+                                            </div>
+                                        </TabsContent>
+
+                                        <TabsContent value="visits" className="m-0 flex-1 outline-none">
+                                            <div className="p-0 overflow-x-auto">
+                                                <Table>
+                                                    <TableHeader className="bg-neutral-50/50 sticky top-0 z-10">
+                                                        <TableRow className="border-neutral-100 hover:bg-transparent">
+                                                            <TableHead className="px-8 py-4 text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Сотрудник</TableHead>
+                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Услуга</TableHead>
+                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-center">Статус</TableHead>
+                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-right px-8">Стоимость</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {isLoadingVisits ? (
+                                                            <TableRow>
+                                                                <TableCell colSpan={4} className="py-20 text-center text-[10px] font-black uppercase text-neutral-300 tracking-widest italic">Загрузка данных...</TableCell>
+                                                            </TableRow>
+                                                        ) : customerVisits?.length > 0 ? (
+                                                            customerVisits.map((visit: any, idx: number) => (
+                                                                <TableRow 
+                                                                    key={visit.id} 
+                                                                    className={cn(
+                                                                        "border-neutral-50 transition-colors",
+                                                                        idx % 2 === 1 ? "bg-neutral-50/50" : "bg-white"
+                                                                    )}
+                                                                >
+                                                                    <TableCell className="px-8 py-5">
+                                                                         <div className="flex items-center gap-4">
+                                                                             <div className="h-10 w-10 bg-neutral-100 rounded-full flex items-center justify-center text-[10px] font-black text-neutral-400 italic">
+                                                                                 {visit.employee_name?.[0]}
+                                                                             </div>
+                                                                             <div className="flex flex-col">
+                                                                                 <span className="text-xs font-black text-neutral-900 uppercase italic leading-none mb-1">{visit.employee_name}</span>
+                                                                                 <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
+                                                                                     {format(new Date(visit.start_time), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                                                                                 </span>
+                                                                             </div>
+                                                                         </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <span className="text-[11px] font-bold text-neutral-700 uppercase italic tracking-tight">{visit.service_name}</span>
+                                                                            <span className="text-[8px] font-bold text-neutral-200 uppercase tracking-widest italic">ID #{visit.id}</span>
+                                                                        </div>
+                                                                    </TableCell>
+                                                                     <TableCell className="text-center">
+                                                                        <Badge className={cn(
+                                                                            "text-[8px] font-black uppercase px-2.5 py-1 rounded-full border shadow-none tracking-widest inline-flex transition-colors",
+                                                                            visit.status === 'finished' || visit.status === 'arrived' ? "bg-white text-blue-600 border-neutral-100 shadow-sm" :
+                                                                            visit.status === 'no_show' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
+                                                                            visit.status === 'confirmed' ? "bg-neutral-50 text-neutral-500 border-neutral-100" :
+                                                                            visit.status === 'pending' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
+                                                                            "bg-white text-neutral-400 border-neutral-100 shadow-sm"
+                                                                        )}>
+                                                                            {visit.status === 'finished' || visit.status === 'arrived' ? 'Пришел' : 
+                                                                             visit.status === 'no_show' ? 'Не пришел' : 
+                                                                             visit.status === 'confirmed' ? 'Подтвержден' :
+                                                                             visit.status === 'pending' ? 'Ожидание' :
+                                                                             visit.status}
+                                                                        </Badge>
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right px-8 font-black text-neutral-900 italic tracking-tight text-xs">
+                                                                        {visit.price?.toLocaleString()} 
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            ))
+                                                        ) : (
+                                                            <TableRow>
+                                                                <TableCell colSpan={4} className="py-32 text-center text-[10px] font-black uppercase text-neutral-200 tracking-widest italic">Нет истории посещений</TableCell>
+                                                            </TableRow>
+                                                        )}
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </TabsContent>
+
+                                        <TabsContent value="notifications" className="m-0 flex-1 outline-none">
+                                            <div className="h-12 border-b border-neutral-50 px-8 flex items-center justify-start gap-4 shrink-0 bg-neutral-50/30">
                                                 {['all', 'telegram', 'sms'].map((filter) => (
                                                     <button
                                                         key={filter}
                                                         onClick={() => setNotificationFilter(filter)}
                                                         className={cn(
-                                                            "px-4 py-1.5 text-[9px] font-black uppercase rounded-lg transition-all tracking-widest",
+                                                            "px-4 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all tracking-widest",
                                                             notificationFilter === filter 
-                                                                ? "bg-neutral-900 text-white shadow-lg shadow-black/10" 
-                                                                : "text-neutral-400 hover:text-neutral-600"
+                                                                ? "bg-white text-neutral-900 shadow-sm border border-neutral-100" 
+                                                                : "text-neutral-300 hover:text-neutral-500"
                                                         )}
                                                     >
                                                         {filter === 'all' ? 'Все' : filter}
                                                     </button>
                                                 ))}
                                             </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            {isLoadingNotifications ? (
-                                                <div className="text-center py-20 text-neutral-400 italic text-sm">Загрузка уведомлений...</div>
-                                            ) : customerNotifications?.filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter).length > 0 ? (
-                                                customerNotifications
-                                                    .filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter)
-                                                    .map((n: any) => (
-                                                    <div key={n.id} className="bg-white p-6 rounded-[2rem] border border-neutral-50 shadow-sm flex flex-col gap-4 group hover:border-neutral-200 transition-all">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-4">
-                                                                <div className={cn(
-                                                                    "h-10 w-10 rounded-xl flex items-center justify-center border shadow-sm transition-colors",
-                                                                    n.channel === 'telegram' ? "bg-blue-50 border-blue-100 text-blue-500" : "bg-neutral-50 border-neutral-100 text-neutral-400"
-                                                                )}>
-                                                                    {n.channel === 'telegram' ? <span className="text-[10px] font-black italic">TG</span> : <span className="text-[10px] font-black italic">SMS</span>}
-                                                                </div>
-                                                                <div className="flex flex-col gap-0.5">
+                                            <div className="p-8 space-y-4">
+                                                {isLoadingNotifications ? (
+                                                    <div className="py-20 text-center text-neutral-300 italic uppercase font-black tracking-widest text-[10px]">Загрузка уведомлений...</div>
+                                                ) : customerNotifications?.filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter).length > 0 ? (
+                                                    customerNotifications
+                                                        .filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter)
+                                                        .map((n: any) => (
+                                                        <div key={n.id} className="bg-white p-5 rounded-2xl border border-neutral-100 flex items-start justify-between group hover:border-neutral-200 transition-all">
+                                                            <div className="space-y-3 flex-1">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className={cn(
+                                                                        "h-2 w-2 rounded-full",
+                                                                        n.status === 'sent' ? "bg-emerald-400" : "bg-neutral-200"
+                                                                    )} />
                                                                     <span className="text-[10px] font-black text-neutral-900 uppercase tracking-widest italic">{n.type}</span>
-                                                                    <span className="text-[9px] font-bold text-neutral-400 uppercase italic tracking-tighter">
-                                                                        {format(new Date(n.created_at), 'd MMMM yyyy, HH:mm', { locale: ru })}
+                                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
+                                                                        {format(new Date(n.created_at), 'dd.MM.yyyy HH:mm', { locale: ru })}
                                                                     </span>
                                                                 </div>
+                                                                <p className="text-sm text-neutral-600 font-medium leading-relaxed italic max-w-2xl">
+                                                                    {n.content}
+                                                                </p>
                                                             </div>
-                                                            <Badge className={cn(
-                                                                "text-[9px] font-black uppercase px-2.5 py-0.5 rounded-lg border shadow-none tracking-widest",
-                                                                n.status === 'sent' ? "bg-blue-50 text-blue-600 border-blue-100" :
-                                                                n.status === 'delivered' ? "bg-green-50 text-green-600 border-green-100" :
-                                                                "bg-neutral-100 text-neutral-400 border-neutral-200"
-                                                            )}>
-                                                                {n.status}
+                                                            <Badge variant="outline" className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border-neutral-100 text-neutral-400 tracking-tighter">
+                                                                {n.channel} • {n.status}
                                                             </Badge>
                                                         </div>
-                                                        <div className="bg-neutral-50/50 p-5 rounded-2xl border border-neutral-100/50">
-                                                            <p className="text-xs text-neutral-600 font-medium leading-relaxed italic">
-                                                                {n.content}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-center py-24 text-neutral-300 italic text-sm border-2 border-dashed border-neutral-100 rounded-[2.5rem] bg-white/50">
-                                                    Уведомлений не найдено
+                                                    ))
+                                                ) : (
+                                                    <div className="text-center py-32 text-neutral-200 italic font-black uppercase tracking-[0.2em] text-[10px]">Уведомлений не найдено</div>
+                                                )}
+                                            </div>
+                                        </TabsContent>
+                                    </div>
+                                </Tabs>
+
+                                <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-neutral-100 flex items-center justify-between px-8 z-20">
+                                    <div className="flex items-center gap-2">
+                                        {currentCustomer && (
+                                            <Button variant="ghost" className="h-11 px-0 text-neutral-400 hover:text-rose-600 gap-2 text-[10px] font-black uppercase tracking-widest">
+                                                <Trash2 className="h-4 w-4" /> Удалить запись
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <Button 
+                                        onClick={handleSave}
+                                        className="bg-[#FBC400] hover:bg-[#EBB400] text-black h-12 px-10 rounded-xl gap-3 text-[11px] font-black uppercase tracking-widest shadow-lg shadow-[#FBC400]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                    >
+                                        {updateCustomerMutation.isPending || addCustomerMutation.isPending ? 'Сохранение...' : 'Сохранить данные'}
+                                    </Button>
+                                </div>
+                            </main>
+
+                            {/* RIGHT COLUMN: Avatar & Comments */}
+                            <aside className="w-[320px] bg-neutral-50/20 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+                                <div className="p-8 space-y-10">
+                                    {/* Avatar Section */}
+                                    <div className="flex flex-col items-center gap-6">
+                                        <div className="h-32 w-32 rounded-3xl bg-neutral-100 flex items-center justify-center border border-neutral-100 shadow-sm relative group overflow-hidden">
+                                            <User className="h-12 w-12 text-neutral-200 transition-transform group-hover:scale-110" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                                                <Camera className="h-6 w-6 text-white" />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button variant="outline" size="sm" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest gap-2 bg-white">
+                                                <Edit2 className="h-3 w-3" /> Изменить
+                                            </Button>
+                                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg text-rose-500 hover:bg-rose-50 hover:border-rose-100 bg-white">
+                                                <Trash2 className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                        <p className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest text-center">Максимальный размер файла — 12 МБ</p>
+                                    </div>
+
+                                    {/* History/Comments Section */}
+                                    <div className="space-y-6">
+                                        <h4 className="text-xl font-black text-neutral-900 uppercase italic tracking-tight">История комментариев</h4>
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest italic">Новый комментарий</Label>
+                                                <div className="relative">
+                                                    <textarea 
+                                                        placeholder="Введите текст..."
+                                                        className="w-full rounded-2xl border border-neutral-100 bg-white px-5 py-4 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none shadow-sm min-h-[120px]"
+                                                    />
                                                 </div>
-                                            )}
-                                        </div>
-                                    </TabsContent>
-                                </div>
-                            </Tabs>
-                        </div>
-
-                        {/* Right Column: Stats & Notes */}
-                        <div className="p-8 flex flex-col gap-8 overflow-y-auto custom-scrollbar bg-white">
-                            <div className="space-y-6">
-                                <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em] px-1">Статистика</h4>
-                                <div className="space-y-4">
-                                    <div className="p-5 bg-emerald-50 rounded-[2rem] border border-emerald-100 flex items-center gap-5 transition-transform hover:scale-[1.02]">
-                                        <div className="h-12 w-12 bg-white rounded-2xl shadow-sm border border-emerald-100 flex items-center justify-center shrink-0">
-                                            <History className="h-6 w-6 text-emerald-500" />
-                                        </div>
-                                        <div>
-                                            <div className="text-2xl font-black text-emerald-900 italic leading-none">
-                                                {currentCustomer?.stats?.total_visits || 0}
                                             </div>
-                                            <div className="text-[9px] font-black uppercase text-emerald-600 tracking-widest mt-1">Визитов</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-5 bg-red-50 rounded-[2rem] border border-red-100 flex items-center gap-5 transition-transform hover:scale-[1.02]">
-                                        <div className="h-12 w-12 bg-white rounded-2xl shadow-sm border border-red-100 flex items-center justify-center shrink-0">
-                                            <UserX className="h-6 w-6 text-red-500" />
-                                        </div>
-                                        <div>
-                                            <div className="text-2xl font-black text-red-900 italic leading-none">
-                                                {currentCustomer?.stats?.no_shows || 0}
-                                            </div>
-                                            <div className="text-[9px] font-black uppercase text-red-600 tracking-widest mt-1">Неявок</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-5 bg-neutral-50 rounded-[2rem] border border-neutral-100 flex flex-col gap-3">
-                                        <div className="flex justify-between items-center px-1">
-                                            <span className="text-[9px] font-black uppercase text-neutral-400 tracking-widest">Средний чек</span>
-                                            <span className="text-sm font-black text-neutral-900 italic">
-                                                {currentCustomer?.stats?.avg_check?.toLocaleString() || 0} ₽
-                                            </span>
-                                        </div>
-                                        <div className="h-px bg-neutral-200/50 mx-1" />
-                                        <div className="flex justify-between items-center px-1">
-                                            <span className="text-[9px] font-black uppercase text-neutral-400 tracking-widest">Последний раз</span>
-                                            <span className="text-[10px] font-bold text-neutral-500 uppercase">
-                                                {currentCustomer?.last_visit ? format(new Date(currentCustomer.last_visit), 'dd.MM.yy', { locale: ru }) : '—'}
-                                            </span>
+                                            <Button disabled className="w-full h-11 bg-neutral-100 text-neutral-300 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed">
+                                                Добавить
+                                            </Button>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em] px-1">Заметки</h4>
-                                <div className="p-6 bg-neutral-50 rounded-[2rem] border border-neutral-100 min-h-[150px]">
-                                    <p className="text-xs text-neutral-600 font-medium italic leading-relaxed">
-                                        {currentCustomer?.notes || 'Заметки отсутствуют.'}
-                                    </p>
-                                </div>
-                            </div>
+                            </aside>
                         </div>
                     </div>
-                </DialogContent>
-            </Dialog>
-
-            <Dialog open={isAddCustomerOpen || isEditCustomerOpen} onOpenChange={(open) => {
-                if (!open) {
-                    setIsAddCustomerOpen(false);
-                    setIsEditCustomerOpen(false);
-                    resetForm();
-                }
-            }}>
-                <DialogContent className="sm:max-w-[500px] rounded-[2rem] border-none shadow-2xl p-8">
-                    <DialogHeader>
-                        <DialogTitle className="text-2xl font-black uppercase tracking-tight text-neutral-900">
-                            {isEditCustomerOpen ? 'Редактировать клиента' : 'Новый клиент'}
-                        </DialogTitle>
-                        <DialogDescription className="text-neutral-400 font-bold text-xs uppercase tracking-wider">
-                            {isEditCustomerOpen ? 'Измените данные клиента' : 'Заполните информацию о клиенте'}
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="grid gap-6 py-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1 tracking-widest">Имя</Label>
-                                <Input placeholder="Имя" value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} className="h-12 rounded-2xl border-neutral-100 bg-neutral-50/50 focus:ring-1 focus:ring-neutral-200 font-bold" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1 tracking-widest">Фамилия</Label>
-                                <Input placeholder="Фамилия" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} className="h-12 rounded-2xl border-neutral-100 bg-neutral-50/50 focus:ring-1 focus:ring-neutral-200 font-bold" />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1 tracking-widest">Телефон</Label>
-                            <Input placeholder="Телефон" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="h-12 rounded-2xl border-neutral-100 bg-neutral-50/50 focus:ring-1 focus:ring-neutral-200 font-bold" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1 tracking-widest">Заметки</Label>
-                            <textarea rows={4} placeholder="Заметки..." value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className="flex min-h-[100px] w-full rounded-2xl border border-neutral-100 bg-neutral-50/50 px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-200" />
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => { setIsAddCustomerOpen(false); setIsEditCustomerOpen(false); }} className="rounded-2xl font-bold h-12">Отмена</Button>
-                        <Button onClick={handleSave} className="bg-neutral-900 text-white hover:bg-black px-10 rounded-2xl h-12 font-bold shadow-xl shadow-black/10">Сохранить</Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

@@ -311,7 +311,7 @@ function BookingWidgetContent() {
                                                                 <div className="flex items-center gap-2 text-xs text-neutral-500">
                                                                     <span>{empSvc.duration_minutes || svc.duration_minutes} мин</span>
                                                                     <span>•</span>
-                                                                    <span className="font-medium text-neutral-900">{empSvc.price || svc.price} ₽</span>
+                                                                    <span className="font-medium text-neutral-900">{empSvc.price || svc.price} </span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -343,7 +343,7 @@ function BookingWidgetContent() {
                                                                 <div className="flex items-center gap-2 text-xs text-neutral-500">
                                                                     <span>{svc.duration_minutes} мин</span>
                                                                     <span>•</span>
-                                                                    <span className="font-medium text-neutral-900">{svc.price} ₽</span>
+                                                                    <span className="font-medium text-neutral-900">{svc.price} </span>
                                                                 </div>
                                                             </div>
                                                         </div>

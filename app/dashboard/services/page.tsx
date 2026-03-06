@@ -206,7 +206,7 @@ export default function ServicesPage() {
                                         <div className="flex flex-col overflow-hidden">
                                             <span className="text-sm font-bold truncate">{svc.name}</span>
                                             <span className={`text-[10px] ${selectedServiceID === svc.id ? 'text-neutral-400' : 'text-neutral-500'}`}>
-                                                {svc.price} ₽ • {svc.duration_minutes} мин
+                                                {svc.price}  • {svc.duration_minutes} мин
                                             </span>
                                         </div>
                                     </button>
@@ -235,7 +235,7 @@ export default function ServicesPage() {
                                 <div className="flex flex-col">
                                     <span className="text-sm font-bold truncate">{svc.name}</span>
                                     <span className={`text-[10px] ${selectedServiceID === svc.id ? 'text-neutral-400' : 'text-neutral-500'}`}>
-                                        {svc.price} ₽ • {svc.duration_minutes} мин
+                                        {svc.price}  • {svc.duration_minutes} мин
                                     </span>
                                 </div>
                             </button>
@@ -348,7 +348,7 @@ export default function ServicesPage() {
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="grid gap-2">
-                                        <Label className="font-bold text-xs text-neutral-700">Базовая цена (₽)</Label>
+                                        <Label className="font-bold text-xs text-neutral-700">Базовая цена ()</Label>
                                         <Input
                                             type="number"
                                             onFocus={(e) => e.target.select()}
@@ -389,7 +389,7 @@ export default function ServicesPage() {
                                         <TableRow className="hover:bg-transparent border-neutral-100">
                                             <TableHead className="px-6 py-4 text-neutral-500 font-bold uppercase text-[10px] tracking-wider">Мастер</TableHead>
                                             <TableHead className="text-neutral-500 font-bold uppercase text-[10px] tracking-wider">Статус</TableHead>
-                                            <TableHead className="text-neutral-500 font-bold uppercase text-[10px] tracking-wider">Цена (₽)</TableHead>
+                                            <TableHead className="text-neutral-500 font-bold uppercase text-[10px] tracking-wider">Цена ()</TableHead>
                                             <TableHead className="text-neutral-500 font-bold uppercase text-[10px] tracking-wider">Длительность (мин)</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -545,7 +545,7 @@ export default function ServicesPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="grid gap-2">
-                                <Label>Цена (₽)</Label>
+                                <Label>Цена ()</Label>
                                 <Input type="number" value={newService.price} onChange={(e) => setNewService({ ...newService, price: e.target.value })} />
                             </div>
                             <div className="grid gap-2">
