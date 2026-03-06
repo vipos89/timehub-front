@@ -34,6 +34,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useBranch } from '@/context/branch-context';
+import { toast } from 'sonner';
 
 export interface BookingEditorProps {
     isOpen: boolean;
@@ -268,71 +269,78 @@ export function BookingEditor({
             payments: formData.payments
         };
 
-        await onSave(payload);
-        setWarningType(null);
+        try {
+            await onSave(payload);
+            setWarningType(null);
+        } catch (err: any) {
+            const errorData = err.response?.data;
+            const errorMsg = typeof errorData === 'string' ? errorData : errorData?.error || err.message;
+            
+            if (errorMsg && errorMsg.includes("overbooking not allowed")) {
+                setWarningType('overbooking');
+            } else {
+                toast.error(errorMsg || 'Ошибка сохранения');
+            }
+        }
     };
 
     const handleSave = () => {
         if (master) {
-            const startStr = formData.startTime;
-            const endStr = formData.endTime;
-            if (startStr && endStr) {
-                const newStartVal = parseInt(startStr.replace(':', ''), 10);
-                const newEndVal = parseInt(endStr.replace(':', ''), 10);
+            const [startH, startM] = formData.startTime.split(':').map(Number);
+            const [endH, endM] = formData.endTime.split(':').map(Number);
+            
+            const newStart = formData.bookingDate.set({ hour: startH, minute: startM, second: 0, millisecond: 0 }).toMillis();
+            const newEnd = formData.bookingDate.set({ hour: endH, minute: endM, second: 0, millisecond: 0 }).toMillis();
                 
-                const hasOverlap = appointments.some(app => {
-                    if (app.employee_id !== master.id || app.status === 'cancelled') return false;
-                    if (mode === 'edit' && selectedAppointment && app.id === selectedAppointment.id) return false;
-                    const appStart = DateTime.fromISO(app.start_time).setZone(timezone).toFormat('HHmm');
-                    const appEnd = DateTime.fromISO(app.end_time).setZone(timezone).toFormat('HHmm');
-                    const exStartVal = parseInt(appStart, 10);
-                    const exEndVal = parseInt(appEnd, 10);
-                    return newStartVal < exEndVal && newEndVal > exStartVal;
-                });
+            const hasOverlap = appointments.some(app => {
+                if (app.employee_id !== master.id || app.status === 'cancelled') return false;
+                if (mode === 'edit' && selectedAppointment && app.id === selectedAppointment.id) return false;
                 
-                if (hasOverlap) { 
-                    setWarningType('overbooking'); 
-                    return; 
+                const appStart = DateTime.fromISO(app.start_time).setZone(timezone).toMillis();
+                const appEnd = DateTime.fromISO(app.end_time).setZone(timezone).toMillis();
+                
+                return newStart < appEnd && newEnd > appStart;
+            });
+                
+            if (hasOverlap) { 
+                setWarningType('overbooking'); 
+                return; 
+            }
+
+            if (shifts) {
+                const shiftDate = formData.bookingDate.toISODate();
+                const shift = shifts.find((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
+                
+                let hasWorkingHours = false;
+                let shiftStartH = 0, shiftStartM = 0;
+                let shiftEndH = 24, shiftEndM = 0;
+
+                if (shift && shift.start_time && shift.end_time && shift.shift_type !== 'off' && !shift.is_day_off) {
+                    [shiftStartH, shiftStartM] = shift.start_time.split(':').map(Number);
+                    [shiftEndH, shiftEndM] = shift.end_time.split(':').map(Number);
+                    hasWorkingHours = true;
+                } else if (!shift && currentBranch && (currentBranch as any).schedule) {
+                    const dayOfWeek = formData.bookingDate.weekday % 7;
+                    const branchDay = (currentBranch as any).schedule.find((s: any) => s.day_of_week === dayOfWeek);
+                    if (branchDay && !branchDay.is_day_off) {
+                        [shiftStartH, shiftStartM] = branchDay.start_time.split(':').map(Number);
+                        [shiftEndH, shiftEndM] = branchDay.end_time.split(':').map(Number);
+                        hasWorkingHours = true;
+                    }
                 }
 
-                if (shifts) {
-                    const shiftDate = formData.bookingDate.toISODate();
-                    const shift = shifts.find((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
+                if (!hasWorkingHours) {
+                    setWarningType('out_of_shift');
+                    return;
+                } else {
+                    const reqStartTotal = startH * 60 + startM;
+                    const reqEndTotal = endH * 60 + endM;
+                    const shiftStartTotal = shiftStartH * 60 + shiftStartM;
+                    const shiftEndTotal = shiftEndH * 60 + shiftEndM;
                     
-                    let hasWorkingHours = false;
-                    let shiftStartH = 0, shiftStartM = 0;
-                    let shiftEndH = 24, shiftEndM = 0;
-
-                    if (shift && shift.start_time && shift.end_time && shift.shift_type !== 'off' && !shift.is_day_off) {
-                        [shiftStartH, shiftStartM] = shift.start_time.split(':').map(Number);
-                        [shiftEndH, shiftEndM] = shift.end_time.split(':').map(Number);
-                        hasWorkingHours = true;
-                    } else if (!shift && currentBranch && (currentBranch as any).schedule) {
-                        const dayOfWeek = formData.bookingDate.weekday % 7;
-                        const branchDay = (currentBranch as any).schedule.find((s: any) => s.day_of_week === dayOfWeek);
-                        if (branchDay && !branchDay.is_day_off) {
-                            [shiftStartH, shiftStartM] = branchDay.start_time.split(':').map(Number);
-                            [shiftEndH, shiftEndM] = branchDay.end_time.split(':').map(Number);
-                            hasWorkingHours = true;
-                        }
-                    }
-
-                    if (!hasWorkingHours) {
+                    if (reqStartTotal < shiftStartTotal || reqEndTotal > shiftEndTotal) {
                         setWarningType('out_of_shift');
                         return;
-                    } else {
-                        const [reqStartH, reqStartM] = startStr.split(':').map(Number);
-                        const [reqEndH, reqEndM] = endStr.split(':').map(Number);
-                        
-                        const reqStartTotal = reqStartH * 60 + reqStartM;
-                        const reqEndTotal = reqEndH * 60 + reqEndM;
-                        const shiftStartTotal = shiftStartH * 60 + shiftStartM;
-                        const shiftEndTotal = shiftEndH * 60 + shiftEndM;
-                        
-                        if (reqStartTotal < shiftStartTotal || reqEndTotal > shiftEndTotal) {
-                            setWarningType('out_of_shift');
-                            return;
-                        }
                     }
                 }
             }
@@ -526,7 +534,7 @@ export function BookingEditor({
                 </div>
                 <div className="bg-neutral-50/50 p-6 flex gap-3 sm:justify-center">
                     <Button variant="ghost" onClick={() => setWarningType(null)} className="flex-1 h-12 rounded-xl font-bold hover:bg-neutral-100">Отмена</Button>
-                    <Button onClick={() => executeSave(warningType === 'overbooking')} disabled={isSaving} className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold">Да, создать</Button>
+                    <Button onClick={() => executeSave(true)} disabled={isSaving} className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold">Да, создать</Button>
                 </div>
             </DialogContent>
         </Dialog>

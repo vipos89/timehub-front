@@ -324,18 +324,11 @@ export default function CustomersPage() {
                     setTimeout(resetForm, 300);
                 }
             }}>
-                <DialogContent className="sm:max-w-[1400px] w-[98vw] h-[92vh] p-0 overflow-hidden border-none rounded-[2rem] shadow-2xl bg-white">
+                <DialogContent className="sm:max-w-[1400px] w-[98vw] h-[92vh] p-0 overflow-hidden border-none rounded-[2rem] shadow-2xl bg-white flex flex-col">
                     <div className="flex flex-col h-full relative">
                         {/* Header: Fixed top-right close */}
                         <div className="shrink-0 h-16 border-b border-neutral-100 flex items-center justify-between px-6 bg-white z-50">
                             <div className="flex items-center gap-4">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-9 rounded-xl border-neutral-200 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-neutral-900 gap-2"
-                                >
-                                    <ArrowLeftRight className="h-3.5 w-3.5" /> Сменить клиента
-                                </Button>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Button 
@@ -349,9 +342,9 @@ export default function CustomersPage() {
                             </div>
                         </div>
 
-                        <div className="flex-1 flex overflow-hidden">
-                            {/* LEFT COLUMN: Profile & Quick Info */}
-                            <aside className="w-[280px] bg-neutral-50/30 border-r border-neutral-100 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+                        <div className="flex flex-1 overflow-hidden h-full">
+                            {/* LEFT COLUMN: Summary & Stats */}
+                            <aside className="w-[300px] border-r border-neutral-100 flex flex-col bg-white shrink-0 overflow-y-auto custom-scrollbar">
                                 <div className="p-6 space-y-8">
                                     {/* Profile Info */}
                                     <div className="space-y-4">
@@ -366,7 +359,6 @@ export default function CustomersPage() {
                                             <p className="text-xs font-bold text-neutral-400 tracking-tight">{formData.phone || "—"}</p>
                                         </div>
 
-                                        <div className="flex flex-col gap-2">
                                             <div className="flex items-center gap-2">
                                                 <Button variant="outline" className="h-10 w-10 p-0 rounded-full border-neutral-200 hover:bg-white shadow-sm">
                                                     <User className="h-4 w-4 text-neutral-400" />
@@ -375,34 +367,9 @@ export default function CustomersPage() {
                                                     <MoreHorizontal className="h-4 w-4 text-neutral-400" />
                                                 </Button>
                                             </div>
-                                            
-                                            <Button 
-                                                variant="outline" 
-                                                className="w-full h-11 bg-white border-neutral-200 rounded-xl gap-3 text-[10px] font-black uppercase tracking-widest shadow-sm hover:border-neutral-900 transition-all"
-                                            >
-                                                <History className="h-4 w-4 text-neutral-400" /> История посещений
-                                            </Button>
-
-                                            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-neutral-100 shadow-sm cursor-pointer hover:border-neutral-200 transition-all">
-                                                <div className="h-4 w-4 rounded border border-neutral-300 flex items-center justify-center">
-                                                    {/* Checkbox */}
-                                                </div>
-                                                <span className="text-[9px] font-black text-neutral-400 uppercase tracking-tight leading-none">Записывает другого посетителя</span>
-                                            </div>
-                                        </div>
                                     </div>
 
-                                    {/* Additional Info Section */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Дополнительно</h4>
-                                        <Button variant="ghost" className="w-full justify-start h-9 px-0 text-neutral-400 hover:text-neutral-900 text-[10px] font-bold uppercase tracking-widest gap-2">
-                                            <Plus className="h-3 w-3" /> Добавить примечание
-                                        </Button>
-                                        <div className="space-y-1">
-                                            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Дополнительный телефон</span>
-                                            <p className="text-sm font-bold text-neutral-900 italic">—</p>
-                                        </div>
-                                    </div>
+
 
                                     {/* Network Data Section */}
                                     <div className="space-y-6 pt-6 border-t border-neutral-100">
@@ -451,7 +418,7 @@ export default function CustomersPage() {
                             </aside>
 
                             {/* CENTER COLUMN: Data Form */}
-                            <main className="flex-1 bg-white border-r border-neutral-100 flex flex-col overflow-hidden relative shadow-[20px_0_50px_rgba(0,0,0,0.02)] z-10">
+                            <main className="flex-1 bg-white flex flex-col overflow-hidden relative shadow-[20px_0_50px_rgba(0,0,0,0.02)] z-10">
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
                                     <div className="px-8 pt-8 pb-4 flex items-center justify-start shrink-0">
                                         <div className="flex items-center gap-4">
@@ -489,248 +456,248 @@ export default function CustomersPage() {
                                                 )}
                                             </TabsList>
                                         </div>
-                                        
-            
                                     </div>
 
                                     <div className="flex-1 overflow-y-auto custom-scrollbar">
-                                        <TabsContent value="info" className="m-0 p-8 space-y-8 pb-24 outline-none">
-                                            <div className="grid gap-6">
-                                                <div className="space-y-2">
-                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Имя</Label>
-                                                    <Input 
-                                                        value={formData.first_name} 
-                                                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                                                        className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
-                                                    />
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4">
+                                        <div className="min-h-min p-8 space-y-8">
+                                            <TabsContent value="info" className="m-0 outline-none">
+                                                <div className="grid gap-6">
                                                     <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Телефон</Label>
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Имя</Label>
                                                         <Input 
-                                                            value={formData.phone} 
-                                                            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                                            value={formData.first_name} 
+                                                            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
                                                             className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
                                                         />
                                                     </div>
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Телефон</Label>
+                                                            <Input 
+                                                                value={formData.phone} 
+                                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дополнительный телефон</Label>
+                                                            <Input 
+                                                                placeholder="+375 00 000-00-00"
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                            />
+                                                        </div>
+                                                    </div>
+
                                                     <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дополнительный телефон</Label>
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Email</Label>
                                                         <Input 
-                                                            placeholder="+375 00 000-00-00"
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                            value={formData.email} 
+                                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                            placeholder="example@mail.ru"
+                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
                                                         />
                                                     </div>
-                                                </div>
 
-                                                <div className="space-y-2">
-                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Email</Label>
-                                                    <Input 
-                                                        value={formData.email} 
-                                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                        placeholder="example@mail.ru"
-                                                        className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
-                                                    />
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дата рождения</Label>
-                                                        <Input 
-                                                            placeholder="01.01.2000"
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
-                                                        />
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дата рождения</Label>
+                                                            <Input 
+                                                                placeholder="01.01.2000"
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Пол</Label>
+                                                            <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
+                                                                <span className="text-sm font-medium text-neutral-900">Не выбран</span>
+                                                                <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
+                                                            </div>
+                                                        </div>
                                                     </div>
+
                                                     <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Пол</Label>
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Категория</Label>
                                                         <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                            <span className="text-sm font-medium text-neutral-900">Не выбран</span>
+                                                            <span className="text-sm font-medium text-neutral-300">Не выбрана</span>
                                                             <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
                                                         </div>
                                                     </div>
-                                                </div>
 
-                                                <div className="space-y-2">
-                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Категория</Label>
-                                                    <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                        <span className="text-sm font-medium text-neutral-300">Не выбрана</span>
-                                                        <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Важность</Label>
-                                                    <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                        <span className="text-sm font-medium text-neutral-900">Без класса важности</span>
-                                                        <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
-                                                        </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4">
                                                     <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Номер карты</Label>
-                                                        <Input 
-                                                            placeholder="000 000 000"
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Скидка, %</Label>
-                                                        <Input 
-                                                            defaultValue="0"
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
-                                                        />
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-2">
-                                                    <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Примечание</Label>
-                                                    <textarea 
-                                                        rows={6} 
-                                                        value={formData.notes}
-                                                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                                        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none" 
-                                                    />
-                                                </div>
-
-                                                <div className="flex items-center gap-3 py-2">
-                                                    <div className="h-5 w-5 rounded border border-neutral-200 flex items-center justify-center">
-                                                        {/* Checkbox placeholder */}
-                                                    </div>
-                                                    <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-tight">Запретить записываться через онлайн-запись</span>
-                                                </div>
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="visits" className="m-0 flex-1 outline-none">
-                                            <div className="p-0 overflow-x-auto">
-                                                <Table>
-                                                    <TableHeader className="bg-neutral-50/50 sticky top-0 z-10">
-                                                        <TableRow className="border-neutral-100 hover:bg-transparent">
-                                                            <TableHead className="px-8 py-4 text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Сотрудник</TableHead>
-                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Услуга</TableHead>
-                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-center">Статус</TableHead>
-                                                            <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-right px-8">Стоимость</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {isLoadingVisits ? (
-                                                            <TableRow>
-                                                                <TableCell colSpan={4} className="py-20 text-center text-[10px] font-black uppercase text-neutral-300 tracking-widest italic">Загрузка данных...</TableCell>
-                                                            </TableRow>
-                                                        ) : customerVisits?.length > 0 ? (
-                                                            customerVisits.map((visit: any, idx: number) => (
-                                                                <TableRow 
-                                                                    key={visit.id} 
-                                                                    className={cn(
-                                                                        "border-neutral-50 transition-colors",
-                                                                        idx % 2 === 1 ? "bg-neutral-50/50" : "bg-white"
-                                                                    )}
-                                                                >
-                                                                    <TableCell className="px-8 py-5">
-                                                                         <div className="flex items-center gap-4">
-                                                                             <div className="h-10 w-10 bg-neutral-100 rounded-full flex items-center justify-center text-[10px] font-black text-neutral-400 italic">
-                                                                                 {visit.employee_name?.[0]}
-                                                                             </div>
-                                                                             <div className="flex flex-col">
-                                                                                 <span className="text-xs font-black text-neutral-900 uppercase italic leading-none mb-1">{visit.employee_name}</span>
-                                                                                 <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
-                                                                                     {format(new Date(visit.start_time), 'dd.MM.yyyy HH:mm', { locale: ru })}
-                                                                                 </span>
-                                                                             </div>
-                                                                         </div>
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <span className="text-[11px] font-bold text-neutral-700 uppercase italic tracking-tight">{visit.service_name}</span>
-                                                                            <span className="text-[8px] font-bold text-neutral-200 uppercase tracking-widest italic">ID #{visit.id}</span>
-                                                                        </div>
-                                                                    </TableCell>
-                                                                     <TableCell className="text-center">
-                                                                        <Badge className={cn(
-                                                                            "text-[8px] font-black uppercase px-2.5 py-1 rounded-full border shadow-none tracking-widest inline-flex transition-colors",
-                                                                            visit.status === 'finished' || visit.status === 'arrived' ? "bg-white text-blue-600 border-neutral-100 shadow-sm" :
-                                                                            visit.status === 'no_show' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
-                                                                            visit.status === 'confirmed' ? "bg-neutral-50 text-neutral-500 border-neutral-100" :
-                                                                            visit.status === 'pending' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
-                                                                            "bg-white text-neutral-400 border-neutral-100 shadow-sm"
-                                                                        )}>
-                                                                            {visit.status === 'finished' || visit.status === 'arrived' ? 'Пришел' : 
-                                                                             visit.status === 'no_show' ? 'Не пришел' : 
-                                                                             visit.status === 'confirmed' ? 'Подтвержден' :
-                                                                             visit.status === 'pending' ? 'Ожидание' :
-                                                                             visit.status}
-                                                                        </Badge>
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right px-8 font-black text-neutral-900 italic tracking-tight text-xs">
-                                                                        {visit.price?.toLocaleString()} 
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))
-                                                        ) : (
-                                                            <TableRow>
-                                                                <TableCell colSpan={4} className="py-32 text-center text-[10px] font-black uppercase text-neutral-200 tracking-widest italic">Нет истории посещений</TableCell>
-                                                            </TableRow>
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </TabsContent>
-
-                                        <TabsContent value="notifications" className="m-0 flex-1 outline-none">
-                                            <div className="h-12 border-b border-neutral-50 px-8 flex items-center justify-start gap-4 shrink-0 bg-neutral-50/30">
-                                                {['all', 'telegram', 'sms'].map((filter) => (
-                                                    <button
-                                                        key={filter}
-                                                        onClick={() => setNotificationFilter(filter)}
-                                                        className={cn(
-                                                            "px-4 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all tracking-widest",
-                                                            notificationFilter === filter 
-                                                                ? "bg-white text-neutral-900 shadow-sm border border-neutral-100" 
-                                                                : "text-neutral-300 hover:text-neutral-500"
-                                                        )}
-                                                    >
-                                                        {filter === 'all' ? 'Все' : filter}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="p-8 space-y-4">
-                                                {isLoadingNotifications ? (
-                                                    <div className="py-20 text-center text-neutral-300 italic uppercase font-black tracking-widest text-[10px]">Загрузка уведомлений...</div>
-                                                ) : customerNotifications?.filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter).length > 0 ? (
-                                                    customerNotifications
-                                                        .filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter)
-                                                        .map((n: any) => (
-                                                        <div key={n.id} className="bg-white p-5 rounded-2xl border border-neutral-100 flex items-start justify-between group hover:border-neutral-200 transition-all">
-                                                            <div className="space-y-3 flex-1">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className={cn(
-                                                                        "h-2 w-2 rounded-full",
-                                                                        n.status === 'sent' ? "bg-emerald-400" : "bg-neutral-200"
-                                                                    )} />
-                                                                    <span className="text-[10px] font-black text-neutral-900 uppercase tracking-widest italic">{n.type}</span>
-                                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
-                                                                        {format(new Date(n.created_at), 'dd.MM.yyyy HH:mm', { locale: ru })}
-                                                                    </span>
-                                                                </div>
-                                                                <p className="text-sm text-neutral-600 font-medium leading-relaxed italic max-w-2xl">
-                                                                    {n.content}
-                                                                </p>
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Важность</Label>
+                                                        <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
+                                                            <span className="text-sm font-medium text-neutral-900">Без класса важности</span>
+                                                            <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
                                                             </div>
-                                                            <Badge variant="outline" className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border-neutral-100 text-neutral-400 tracking-tighter">
-                                                                {n.channel} • {n.status}
-                                                            </Badge>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Номер карты</Label>
+                                                            <Input 
+                                                                placeholder="000 000 000"
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                            />
                                                         </div>
-                                                    ))
-                                                ) : (
-                                                    <div className="text-center py-32 text-neutral-200 italic font-black uppercase tracking-[0.2em] text-[10px]">Уведомлений не найдено</div>
-                                                )}
-                                            </div>
-                                        </TabsContent>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Скидка, %</Label>
+                                                            <Input 
+                                                                defaultValue="0"
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Примечание</Label>
+                                                        <textarea 
+                                                            rows={6} 
+                                                            value={formData.notes}
+                                                            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                                            className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none" 
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex items-center gap-3 py-2">
+                                                        <div className="h-5 w-5 rounded border border-neutral-200 flex items-center justify-center">
+                                                            {/* Checkbox placeholder */}
+                                                        </div>
+                                                        <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-tight">Запретить записываться через онлайн-запись</span>
+                                                    </div>
+                                                </div>
+                                            </TabsContent>
+
+                                            <TabsContent value="visits" className="m-0 outline-none">
+                                                <div className="p-0 overflow-x-auto">
+                                                    <Table>
+                                                        <TableHeader className="bg-neutral-50/50 sticky top-0 z-10">
+                                                            <TableRow className="border-neutral-100 hover:bg-transparent">
+                                                                <TableHead className="px-8 py-4 text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Сотрудник</TableHead>
+                                                                <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">Услуга</TableHead>
+                                                                <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-center">Статус</TableHead>
+                                                                <TableHead className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic text-right px-8">Стоимость</TableHead>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {isLoadingVisits ? (
+                                                                <TableRow>
+                                                                    <TableCell colSpan={4} className="py-20 text-center text-[10px] font-black uppercase text-neutral-300 tracking-widest italic">Загрузка данных...</TableCell>
+                                                                </TableRow>
+                                                            ) : customerVisits?.length > 0 ? (
+                                                                customerVisits.map((visit: any, idx: number) => (
+                                                                    <TableRow 
+                                                                        key={visit.id} 
+                                                                        className={cn(
+                                                                            "border-neutral-50 transition-colors",
+                                                                            idx % 2 === 1 ? "bg-neutral-50/50" : "bg-white"
+                                                                        )}
+                                                                    >
+                                                                        <TableCell className="px-8 py-5">
+                                                                            <div className="flex items-center gap-4">
+                                                                                <div className="h-10 w-10 bg-neutral-100 rounded-full flex items-center justify-center text-[10px] font-black text-neutral-400 italic">
+                                                                                    {visit.employee_name?.[0]}
+                                                                                </div>
+                                                                                <div className="flex flex-col">
+                                                                                    <span className="text-xs font-black text-neutral-900 uppercase italic leading-none mb-1">{visit.employee_name}</span>
+                                                                                    <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
+                                                                                        {format(new Date(visit.start_time), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            <div className="flex flex-col gap-1">
+                                                                                <span className="text-[11px] font-bold text-neutral-700 uppercase italic tracking-tight">{visit.service_name}</span>
+                                                                                <span className="text-[8px] font-bold text-neutral-200 uppercase tracking-widest italic">ID #{visit.id}</span>
+                                                                            </div>
+                                                                        </TableCell>
+                                                                        <TableCell className="text-center">
+                                                                            <Badge className={cn(
+                                                                                "text-[8px] font-black uppercase px-2.5 py-1 rounded-full border shadow-none tracking-widest inline-flex transition-colors",
+                                                                                visit.status === 'finished' || visit.status === 'arrived' ? "bg-white text-blue-600 border-neutral-100 shadow-sm" :
+                                                                                visit.status === 'no_show' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
+                                                                                visit.status === 'confirmed' ? "bg-neutral-50 text-neutral-500 border-neutral-100" :
+                                                                                visit.status === 'pending' ? "bg-neutral-50 text-neutral-400 border-neutral-100" :
+                                                                                "bg-white text-neutral-400 border-neutral-100 shadow-sm"
+                                                                            )}>
+                                                                                {visit.status === 'finished' || visit.status === 'arrived' ? 'Пришел' : 
+                                                                                visit.status === 'no_show' ? 'Не пришел' : 
+                                                                                visit.status === 'confirmed' ? 'Подтвержден' :
+                                                                                visit.status === 'pending' ? 'Ожидание' :
+                                                                                visit.status}
+                                                                            </Badge>
+                                                                        </TableCell>
+                                                                        <TableCell className="text-right px-8 font-black text-neutral-900 italic tracking-tight text-xs">
+                                                                            {visit.price?.toLocaleString()} 
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                ))
+                                                            ) : (
+                                                                <TableRow>
+                                                                    <TableCell colSpan={4} className="py-32 text-center text-[10px] font-black uppercase text-neutral-200 tracking-widest italic">Нет истории посещений</TableCell>
+                                                                </TableRow>
+                                                            )}
+                                                        </TableBody>
+                                                    </Table>
+                                                </div>
+                                            </TabsContent>
+
+                                            <TabsContent value="notifications" className="m-0 outline-none">
+                                                <div className="h-12 border-b border-neutral-50 px-8 flex items-center justify-start gap-4 shrink-0 bg-neutral-50/30">
+                                                    {['all', 'telegram', 'sms'].map((filter) => (
+                                                        <button
+                                                            key={filter}
+                                                            onClick={() => setNotificationFilter(filter)}
+                                                            className={cn(
+                                                                "px-4 py-1.5 text-[10px] font-black uppercase rounded-lg transition-all tracking-widest",
+                                                                notificationFilter === filter 
+                                                                    ? "bg-white text-neutral-900 shadow-sm border border-neutral-100" 
+                                                                    : "text-neutral-300 hover:text-neutral-500"
+                                                            )}
+                                                        >
+                                                            {filter === 'all' ? 'Все' : filter}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <div className="p-8 space-y-4">
+                                                    {isLoadingNotifications ? (
+                                                        <div className="py-20 text-center text-neutral-300 italic uppercase font-black tracking-widest text-[10px]">Загрузка уведомлений...</div>
+                                                    ) : customerNotifications?.filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter).length > 0 ? (
+                                                        customerNotifications
+                                                            .filter((n: any) => notificationFilter === 'all' || n.channel === notificationFilter)
+                                                            .map((n: any) => (
+                                                            <div key={n.id} className="bg-white p-5 rounded-2xl border border-neutral-100 flex items-start justify-between group hover:border-neutral-200 transition-all">
+                                                                <div className="space-y-3 flex-1">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={cn(
+                                                                            "h-2 w-2 rounded-full",
+                                                                            n.status === 'sent' ? "bg-emerald-400" : "bg-neutral-200"
+                                                                        )} />
+                                                                        <span className="text-[10px] font-black text-neutral-900 uppercase tracking-widest italic">{n.type}</span>
+                                                                        <span className="text-[9px] font-bold text-neutral-300 uppercase italic">
+                                                                            {format(new Date(n.created_at), 'dd.MM.yyyy HH:mm', { locale: ru })}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-sm text-neutral-600 font-medium leading-relaxed italic max-w-2xl">
+                                                                        {n.content}
+                                                                    </p>
+                                                                </div>
+                                                                <Badge variant="outline" className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full border-neutral-100 text-neutral-400 tracking-tighter">
+                                                                    {n.channel} • {n.status}
+                                                                </Badge>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="text-center py-32 text-neutral-200 italic font-black uppercase tracking-[0.2em] text-[10px]">Уведомлений не найдено</div>
+                                                    )}
+                                                </div>
+                                            </TabsContent>
+                                        </div>
                                     </div>
                                 </Tabs>
 
-                                <div className="absolute bottom-0 left-0 right-0 h-20 bg-white border-t border-neutral-100 flex items-center justify-between px-8 z-20">
+                                <div className="shrink-0 h-20 bg-white border-t border-neutral-100 flex items-center justify-between px-8 z-20">
                                     <div className="flex items-center gap-2">
                                         {currentCustomer && (
                                             <Button variant="ghost" className="h-11 px-0 text-neutral-400 hover:text-rose-600 gap-2 text-[10px] font-black uppercase tracking-widest">
@@ -746,49 +713,6 @@ export default function CustomersPage() {
                                     </Button>
                                 </div>
                             </main>
-
-                            {/* RIGHT COLUMN: Avatar & Comments */}
-                            <aside className="w-[320px] bg-neutral-50/20 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
-                                <div className="p-8 space-y-10">
-                                    {/* Avatar Section */}
-                                    <div className="flex flex-col items-center gap-6">
-                                        <div className="h-32 w-32 rounded-3xl bg-neutral-100 flex items-center justify-center border border-neutral-100 shadow-sm relative group overflow-hidden">
-                                            <User className="h-12 w-12 text-neutral-200 transition-transform group-hover:scale-110" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                                                <Camera className="h-6 w-6 text-white" />
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button variant="outline" size="sm" className="h-8 rounded-lg text-[9px] font-black uppercase tracking-widest gap-2 bg-white">
-                                                <Edit2 className="h-3 w-3" /> Изменить
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="h-8 w-8 p-0 rounded-lg text-rose-500 hover:bg-rose-50 hover:border-rose-100 bg-white">
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                        </div>
-                                        <p className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest text-center">Максимальный размер файла — 12 МБ</p>
-                                    </div>
-
-                                    {/* History/Comments Section */}
-                                    <div className="space-y-6">
-                                        <h4 className="text-xl font-black text-neutral-900 uppercase italic tracking-tight">История комментариев</h4>
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <Label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest italic">Новый комментарий</Label>
-                                                <div className="relative">
-                                                    <textarea 
-                                                        placeholder="Введите текст..."
-                                                        className="w-full rounded-2xl border border-neutral-100 bg-white px-5 py-4 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none shadow-sm min-h-[120px]"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <Button disabled className="w-full h-11 bg-neutral-100 text-neutral-300 rounded-xl text-[10px] font-black uppercase tracking-widest cursor-not-allowed">
-                                                Добавить
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </aside>
                         </div>
                     </div>
                 </DialogContent>

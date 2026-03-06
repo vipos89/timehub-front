@@ -69,7 +69,13 @@ export function WidgetBuilder({ isOpen, onClose, onSave, initialData, branches, 
             useGradient: false,
             fontPair: 'modern' as 'modern' | 'classic' | 'minimalist',
             shadowIntensity: 'medium' as 'none' | 'soft' | 'medium' | 'deep',
-            slotStep: 15
+            slotStep: 15,
+            fontFamily: 'Inter' as 'Inter' | 'Montserrat' | 'Outfit' | 'Playfair Display',
+            logoAlignment: 'center' as 'left' | 'center' | 'right',
+            glassOpacity: 80,
+            glassBlur: 12,
+            bgPattern: 'none' as 'none' | 'dots' | 'grid' | 'gradient',
+            accentTextColor: '#000000'
         }
     });
 
@@ -243,11 +249,76 @@ export function WidgetBuilder({ isOpen, onClose, onSave, initialData, branches, 
                                             <div className="flex gap-2"><div className="relative h-11 w-11 shrink-0"><Input type="color" value={formData.settings.accentColor} onChange={(e) => handleUpdateSettings('accentColor', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/><div className="w-full h-full rounded-xl border border-neutral-200 shadow-sm" style={{ backgroundColor: formData.settings.accentColor }} /></div><Input value={formData.settings.accentColor} onChange={(e) => handleUpdateSettings('accentColor', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white font-mono text-[10px]"/></div>
                                         </div>
                                         <div className="space-y-2">
+                                            <Label className="text-xs font-bold text-neutral-700 ml-1">Цвет текста на акценте</Label>
+                                            <div className="flex gap-2"><div className="relative h-11 w-11 shrink-0"><Input type="color" value={formData.settings.accentTextColor} onChange={(e) => handleUpdateSettings('accentTextColor', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/><div className="w-full h-full rounded-xl border border-neutral-200 shadow-sm" style={{ backgroundColor: formData.settings.accentTextColor }} /></div><Input value={formData.settings.accentTextColor} onChange={(e) => handleUpdateSettings('accentTextColor', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white font-mono text-[10px]"/></div>
+                                        </div>
+                                        <div className="space-y-2">
                                             <Label className="text-xs font-bold text-neutral-700 ml-1">Тема</Label>
                                             <Select value={formData.settings.theme} onValueChange={(v) => handleUpdateSettings('theme', v)}><SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white"><SelectValue /></SelectTrigger><SelectContent className="z-[110]"><SelectItem value="light">Светлая</SelectItem><SelectItem value="dark">Темная</SelectItem><SelectItem value="glass">Стекло</SelectItem></SelectContent></Select>
                                         </div>
                                     </div>
                                     <div className="grid gap-2"><Label className="text-xs font-bold text-neutral-700 ml-1">Скругление ({formData.settings.borderRadius}px)</Label><input type="range" min="0" max="40" value={formData.settings.borderRadius} onChange={(e) => handleUpdateSettings('borderRadius', parseInt(e.target.value))} className="w-full h-2 bg-neutral-100 rounded-lg appearance-none cursor-pointer accent-neutral-900"/></div>
+                                    
+                                    <div className="space-y-4 pt-4 border-t border-neutral-100">
+                                        <div className="grid gap-2">
+                                            <Label className="text-xs font-bold text-neutral-700 ml-1">Шрифт</Label>
+                                            <Select value={formData.settings.fontFamily} onValueChange={(v) => handleUpdateSettings('fontFamily', v)}>
+                                                <SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white"><SelectValue /></SelectTrigger>
+                                                <SelectContent className="z-[110]">
+                                                    <SelectItem value="Inter" className="font-sans">Inter (Modern)</SelectItem>
+                                                    <SelectItem value="Montserrat" className="font-sans">Montserrat (Bold)</SelectItem>
+                                                    <SelectItem value="Outfit" className="font-sans">Outfit (Tech)</SelectItem>
+                                                    <SelectItem value="Playfair Display" className="font-serif">Playfair (Elegant)</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                            <Label className="text-xs font-bold text-neutral-700 ml-1">Выравнивание лого</Label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {['left', 'center', 'right'].map((align) => (
+                                                    <Button 
+                                                        key={align}
+                                                        variant="outline" 
+                                                        size="sm"
+                                                        onClick={() => handleUpdateSettings('logoAlignment', align)}
+                                                        className={cn(
+                                                            "rounded-xl h-10 font-bold border-neutral-200",
+                                                            formData.settings.logoAlignment === align && "bg-neutral-900 text-white border-neutral-900"
+                                                        )}
+                                                    >
+                                                        {align === 'left' ? 'Слева' : align === 'center' ? 'Центр' : 'Справа'}
+                                                    </Button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {formData.settings.theme === 'glass' && (
+                                            <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                                                <div className="grid gap-2">
+                                                    <div className="flex justify-between"><Label className="text-xs font-bold text-neutral-700 ml-1">Прозрачность стекла</Label><span className="text-[10px] font-bold text-neutral-400">{formData.settings.glassOpacity}%</span></div>
+                                                    <input type="range" min="10" max="100" value={formData.settings.glassOpacity} onChange={(e) => handleUpdateSettings('glassOpacity', parseInt(e.target.value))} className="w-full h-2 bg-neutral-100 rounded-lg appearance-none cursor-pointer accent-neutral-900"/>
+                                                </div>
+                                                <div className="grid gap-2">
+                                                    <div className="flex justify-between"><Label className="text-xs font-bold text-neutral-700 ml-1">Размытие (Blur)</Label><span className="text-[10px] font-bold text-neutral-400">{formData.settings.glassBlur}px</span></div>
+                                                    <input type="range" min="0" max="24" value={formData.settings.glassBlur} onChange={(e) => handleUpdateSettings('glassBlur', parseInt(e.target.value))} className="w-full h-2 bg-neutral-100 rounded-lg appearance-none cursor-pointer accent-neutral-900"/>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="grid gap-2">
+                                            <Label className="text-xs font-bold text-neutral-700 ml-1">Фоновый узор</Label>
+                                            <Select value={formData.settings.bgPattern} onValueChange={(v) => handleUpdateSettings('bgPattern', v)}>
+                                                <SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white"><SelectValue /></SelectTrigger>
+                                                <SelectContent className="z-[110]">
+                                                    <SelectItem value="none">Без узора</SelectItem>
+                                                    <SelectItem value="dots">Точки</SelectItem>
+                                                    <SelectItem value="grid">Сетка</SelectItem>
+                                                    <SelectItem value="gradient">Мягкий градиент</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
                                 </section>
                             </TabsContent>
                         </div>

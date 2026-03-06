@@ -23,12 +23,29 @@ export function WidgetPreview({ settings, company, branches, type, branchId, emp
     // Otherwise, we show the widget as it would look when opened.
     const showOnlyButton = activeTab === 'button' && !isWidgetOpen;
 
+    const fontStyles = {
+        'Inter': "'Inter', sans-serif",
+        'Montserrat': "'Montserrat', sans-serif",
+        'Outfit': "'Outfit', sans-serif",
+        'Playfair Display': "'Playfair Display', serif"
+    };
+
+    const bgPatternStyle = () => {
+        switch(settings.bgPattern) {
+            case 'dots': return 'radial-gradient(#000 1px, transparent 1px)';
+            case 'grid': return 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)';
+            case 'gradient': return 'linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 100%)';
+            default: return 'none';
+        }
+    };
+
     return (
         <div className="w-full h-full relative bg-white overflow-hidden flex flex-col items-center justify-center p-4">
             {/* Background Pattern to simulate a website */}
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 2px, transparent 2px)', backgroundSize: '32px 32px' }} />
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: bgPatternStyle(), backgroundSize: settings.bgPattern === 'grid' ? '40px 40px' : '32px 32px' }} />
             
             <style jsx global>{`
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Montserrat:wght@400;700;900&family=Outfit:wght@400;700;900&family=Playfair+Display:wght@400;700;900&display=swap');
                 @keyframes th-pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,0,0,0.2); } 70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(0,0,0,0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
                 @keyframes th-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px) rotate(-1deg); } 75% { transform: translateX(4px) rotate(1deg); } }
                 @keyframes th-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
@@ -76,7 +93,7 @@ export function WidgetPreview({ settings, company, branches, type, branchId, emp
                         )}
                         style={{ 
                             backgroundColor: settings.accentColor, 
-                            color: settings.accentColor === '#F5FF82' ? '#000' : '#fff'
+                            color: settings.accentTextColor || (settings.accentColor === '#F5FF82' ? '#000' : '#fff')
                         }}
                     >
                         <CalendarIcon className="h-7 w-7" />

@@ -32,7 +32,22 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     
     const [localBranchId, setLocalBranchId] = useState<string>(selectedBranchID || branches[0]?.id?.toString() || '');
     const [editingRule, setEditingRule] = useState<any | null>(null);
+    const [editingTemplateIdx, setEditingTemplateIdx] = useState<number | null>(null);
     const [activeChannels, setActiveChannels] = useState<string[]>(['telegram', 'sms', 'whatsapp']); // Mock active channels
+
+    const VARIABLES = [
+        { name: '{{client_name}}', desc: 'Имя клиента' },
+        { name: '{{branch_name}}', desc: 'Название филиала' },
+        { name: '{{branch_address}}', desc: 'Адрес филиала' },
+        { name: '{{employee_name}}', desc: 'Имя мастера' },
+        { name: '{{start_time}}', desc: 'Дата и время (15:00 02.01)' },
+        { name: '{{date}}', desc: 'Дата (02.01.2026)' },
+        { name: '{{time}}', desc: 'Время (15:00)' },
+        { name: '{{services}}', desc: 'Список услуг' },
+        { name: '{{appointment_url}}', desc: 'Ссылка на детали записи' },
+        { name: '{{review_url}}', desc: 'Ссылка на отзыв' },
+    ];
+
 
     useEffect(() => {
         if (selectedBranchID) setLocalBranchId(selectedBranchID);
@@ -308,11 +323,21 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                         <Button 
                                             variant="ghost" 
                                             size="sm"
+                                            onClick={() => setEditingTemplateIdx(idx)}
                                             className="text-[10px] font-black uppercase text-neutral-400 hover:text-neutral-900 h-8"
                                         >
                                             <MessageSquare className="h-3 w-3 mr-2" />
-                                            Шаблон текста
+                                            {step.template?.body ? "Изменить шаблон" : "Создать шаблон"}
                                         </Button>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Задержка (мин)</label>
+                                            <Input 
+                                                type="number" 
+                                                value={step.delay_minutes} 
+                                                onChange={(e) => updateStep(idx, 'delay_minutes', parseInt(e.target.value))}
+                                                className="h-8 w-16 text-[10px] font-bold rounded-lg border-neutral-200"
+                                            />
+                                        </div>
                                         <Button 
                                             variant="ghost" 
                                             size="icon"
@@ -341,6 +366,80 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                             className="h-12 rounded-xl bg-neutral-900 text-white hover:bg-black font-bold px-8 shadow-xl shadow-black/10"
                         >
                             Сохранить сценарий
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Template Editor Modal */}
+            <Dialog open={editingTemplateIdx !== null} onOpenChange={(open) => !open && setEditingTemplateIdx(null)}>
+                <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden bg-white rounded-[2rem] border-none shadow-2xl">
+                    <div className="p-8 border-b border-neutral-100 bg-neutral-900 text-white">
+                        <DialogTitle className="text-2xl font-black uppercase tracking-tight italic">
+                            Шаблон сообщения
+                        </DialogTitle>
+                        <DialogDescription className="text-neutral-400 font-bold text-xs mt-2">
+                            Настройте текст уведомления для канала {editingTemplateIdx !== null && editingRule?.steps[editingTemplateIdx]?.channel}
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 space-y-6">
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Текст сообщения</label>
+                            <textarea
+                                className="w-full min-h-[150px] p-6 rounded-2xl bg-neutral-50 border-none text-sm font-medium focus:ring-1 focus:ring-neutral-200 resize-none"
+                                value={editingTemplateIdx !== null ? (editingRule?.steps[editingTemplateIdx]?.template?.body || '') : ''}
+                                onChange={(e) => {
+                                    const newSteps = [...editingRule.steps];
+                                    if (!newSteps[editingTemplateIdx!].template) {
+                                        newSteps[editingTemplateIdx!].template = { 
+                                            body: '', 
+                                            branch_id: editingRule.branch_id,
+                                            name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
+                                        };
+                                    }
+                                    newSteps[editingTemplateIdx!].template.body = e.target.value;
+                                    setEditingRule({ ...editingRule, steps: newSteps });
+                                }}
+                                placeholder="Введите текст сообщения..."
+                            />
+                        </div>
+
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Доступные переменные</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {VARIABLES.map(v => (
+                                    <button
+                                        key={v.name}
+                                        onClick={() => {
+                                            const newSteps = [...editingRule.steps];
+                                            const currentBody = newSteps[editingTemplateIdx!].template?.body || '';
+                                            if (!newSteps[editingTemplateIdx!].template) {
+                                                newSteps[editingTemplateIdx!].template = { 
+                                                    body: '', 
+                                                    branch_id: editingRule.branch_id,
+                                                    name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
+                                                };
+                                            }
+                                            newSteps[editingTemplateIdx!].template.body = currentBody + v.name;
+                                            setEditingRule({ ...editingRule, steps: newSteps });
+                                        }}
+                                        className="text-left p-2 px-3 rounded-lg bg-neutral-50 border border-neutral-100 hover:border-neutral-900 transition-colors group"
+                                    >
+                                        <div className="text-[10px] font-black text-neutral-900 group-hover:text-black">{v.name}</div>
+                                        <div className="text-[8px] font-bold text-neutral-400 uppercase tracking-tighter">{v.desc}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="p-6 bg-neutral-50 border-t border-neutral-100">
+                        <Button 
+                            onClick={() => setEditingTemplateIdx(null)} 
+                            className="h-12 w-full rounded-xl bg-neutral-900 text-white hover:bg-black font-bold shadow-xl shadow-black/10"
+                        >
+                            Готово
                         </Button>
                     </DialogFooter>
                 </DialogContent>

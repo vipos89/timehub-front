@@ -178,7 +178,10 @@ export default function AppointmentsPage() {
         });
     }, [employees, shifts, currentDate, appointments]);
 
+    const [isSaving, setIsSaving] = useState(false);
+
     const handleSaveBooking = async (data: any) => {
+        setIsSaving(true);
         try {
             const payload = { ...data, company_id: company.id, branch_id: Number(selectedBranchID) };
             if (editorMode === 'create') await api.post('/bookings', payload);
@@ -186,7 +189,12 @@ export default function AppointmentsPage() {
             setIsEditorOpen(false);
             queryClient.invalidateQueries({ queryKey: ['appointments'] });
             toast.success('Запись сохранена');
-        } catch (e) { toast.error('Ошибка сохранения'); }
+        } catch (e: any) {
+            // Rethrow to let BookingEditor handle specific errors (like overbooking)
+            throw e;
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const getAppointmentStyle = (app: any) => {
@@ -274,7 +282,7 @@ export default function AppointmentsPage() {
                     </div>
 
                     <div className="flex-1 flex min-w-max">
-                        {visibleEmployees.map(emp => (
+                        {visibleEmployees.map((emp: any) => (
                             <div key={emp.id} className="min-w-[200px] border-r border-neutral-100 relative group flex flex-col flex-1">
                                 <div className="h-12 border-b bg-white/90 backdrop-blur-md flex items-center justify-center sticky top-0 z-20 px-4">
                                     <div className="flex items-center gap-2">
@@ -288,8 +296,22 @@ export default function AppointmentsPage() {
                                          const y = e.clientY - rect.top;
                                          const hour = TIME_SLOTS_START + Math.floor(y / HOUR_HEIGHT);
                                          const minute = Math.floor((y % HOUR_HEIGHT) / (HOUR_HEIGHT/4)) * 15;
+                                         
+                                         const clickTime = currentDate.set({ hour, minute, second: 0, millisecond: 0 });
+                                         const clickMillis = clickTime.toMillis();
+                                         
+                                         // Check if we clicked on an existing appointment to prevent "under-appointment" clicks
+                                         const existingApp = appointments.find((a: any) => {
+                                             if (a.employee_id !== emp.id || a.status === 'cancelled') return false;
+                                             const start = DateTime.fromISO(a.start_time).setZone(timezone).toMillis();
+                                             const end = DateTime.fromISO(a.end_time).setZone(timezone).toMillis();
+                                             return clickMillis >= start && clickMillis < end;
+                                         });
+
+                                         if (existingApp) return;
+
                                          if (hour >= TIME_SLOTS_START && hour <= TIME_SLOTS_END) {
-                                             setSelectedSlot({ empID: emp.id, time: currentDate.set({ hour, minute, second: 0, millisecond: 0 }) });
+                                             setSelectedSlot({ empID: emp.id, time: clickTime });
                                              setEditorMode('create'); setSelectedAppointment(null); setIsEditorOpen(true);
                                          }
                                      }}>
@@ -317,7 +339,7 @@ export default function AppointmentsPage() {
                 </div>
             </div>
 
-            <BookingEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} mode={editorMode} company={company} branchId={Number(selectedBranchID)} selectedSlot={selectedSlot} selectedAppointment={selectedAppointment} employees={employees} allServices={allServices} employeeServices={employeeServices} categories={categories} customers={customers} appointments={appointments} shifts={shifts} onSave={handleSaveBooking} isSaving={false} />
+            <BookingEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} mode={editorMode} company={company} branchId={Number(selectedBranchID)} selectedSlot={selectedSlot} selectedAppointment={selectedAppointment} employees={employees} allServices={allServices} employeeServices={employeeServices} categories={categories} customers={customers} appointments={appointments} shifts={shifts} onSave={handleSaveBooking} isSaving={isSaving} />
         </div>
     );
 }
