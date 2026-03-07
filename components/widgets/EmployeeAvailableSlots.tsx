@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
@@ -12,13 +12,25 @@ interface Props {
     onSlotSelect: (slot: any) => void;
     selectedDate: string;
     onDateChange: (date: string) => void;
-    selectedSlotTime?: string;
+    selectedSlotTime?: string; // Пропс для подсветки выбранного времени
     duration?: number;
     step?: number;
     timezone?: string;
 }
 
 export function EmployeeAvailableSlots({ employeeIds, onSlotSelect, selectedDate, onDateChange, selectedSlotTime, duration = 30, step = 30, timezone = 'Europe/Minsk' }: Props) {
+
+    // ФИКС ПЕРЕКЛЮЧЕНИЯ КАЛЕНДАРЯ: Безопасное получение локальной даты с учетом часового пояса
+    useEffect(() => {
+        if (selectedSlotTime) {
+            // Конвертируем сохраненное время в нужную таймзону и берем из нее дату
+            const slotDateStr = DateTime.fromISO(selectedSlotTime).setZone(timezone).toISODate();
+            if (slotDateStr && slotDateStr !== selectedDate) {
+                onDateChange(slotDateStr);
+            }
+        }
+    }, [selectedSlotTime, selectedDate, onDateChange, timezone]);
+
     const { data: availableDates = [] } = useQuery({
         queryKey: ['availableDates', employeeIds, duration, step, timezone],
         queryFn: async () => {
@@ -69,7 +81,12 @@ export function EmployeeAvailableSlots({ employeeIds, onSlotSelect, selectedDate
                 {isLoadingSlots ? <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-neutral-200" /></div> : uniqueSlots.length > 0 ? (
                     <div className="grid grid-cols-4 gap-2">
                         {uniqueSlots.map((slot: any) => {
-                            const isSelected = selectedSlotTime === slot.start_time;
+                            // ЖЕЛЕЗОБЕТОННЫЙ ФИКС ПОДСВЕТКИ:
+                            // Конвертируем обе строки в абсолютные миллисекунды.
+                            // Теперь 2026-03-09T15:45:00Z === 2026-03-09T18:45:00+03:00
+                            const isSelected = !!selectedSlotTime &&
+                                DateTime.fromISO(selectedSlotTime).toMillis() === DateTime.fromISO(slot.start_time).toMillis();
+
                             return (
                                 <button key={slot.start_time} onClick={() => onSlotSelect(slot)}
                                         className={cn("h-12 flex items-center justify-center rounded-xl font-black text-sm active:scale-95 shadow-sm transition-colors", isSelected ? "bg-black text-white" : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200")}>

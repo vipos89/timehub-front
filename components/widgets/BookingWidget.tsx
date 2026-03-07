@@ -109,7 +109,6 @@ export function BookingWidget({ company, branch, employees, services, categories
                                                 <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-tight">Ближайшее время: <span className="text-neutral-900">{emp.displayDateLabel}</span></div>
                                                 <div className="flex flex-wrap gap-2">
                                                     {emp.nearestSlots.map((slot: any) => (
-                                                        // ФИКС ПЕРЕДАЧИ ID МАСТЕРА ПРИ КЛИКЕ ИЗ КАРТОЧКИ
                                                         <button key={slot.start_time} onClick={(e) => { e.stopPropagation(); state.handleSelectSlot(slot, emp.id); }} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95", state.selectedSlot?.start_time === slot.start_time ? "bg-black text-white shadow-md" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200")}>{format(new Date(slot.start_time), 'HH:mm')}</button>
                                                     ))}
                                                 </div>
@@ -146,11 +145,17 @@ export function BookingWidget({ company, branch, employees, services, categories
                 {state.currentView === 'datetime' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 px-1">
                         <h2 className="text-2xl font-black text-neutral-900 px-1">Выберите время</h2>
+
                         <EmployeeAvailableSlots
+                            // Если выбран конкретный мастер, показываем только его слоты. Если "Любой" — всех.
                             employeeIds={(state.selectedEmployee && state.selectedEmployee.id !== 'any') ? state.selectedEmployee.id : employees.map((e: any) => e.id).join(',')}
-                            duration={state.totalDuration} timezone={branch?.timezone} step={slotStep}
-                            selectedDate={state.viewedDate} onDateChange={state.setViewedDate}
-                            onSlotSelect={(slot) => state.handleSelectSlot(slot, state.selectedEmployee?.id)} // ФИКС: Ограничение текущим мастером
+                            duration={state.totalDuration}
+                            timezone={branch?.timezone}
+                            step={slotStep}
+                            selectedDate={state.viewedDate}
+                            onDateChange={state.setViewedDate}
+                            onSlotSelect={(slot) => state.handleSelectSlot(slot, state.selectedEmployee?.id)}
+                            // Именно эта строчка закрасит выбранную кнопку в черный цвет
                             selectedSlotTime={state.selectedSlot?.start_time}
                         />
                     </div>
