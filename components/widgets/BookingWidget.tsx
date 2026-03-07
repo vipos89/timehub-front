@@ -76,7 +76,7 @@ export function BookingWidget({ company, branch, employees, services, categories
                                             <div className="p-3 bg-neutral-50 rounded-2xl text-neutral-900"><Icon className="h-6 w-6 opacity-40" /></div>
                                             <div className="flex flex-col text-left">
                                                 <span className="text-[10px] font-black uppercase opacity-30">{step === 'specialist' ? 'Мастер' : step === 'services' ? 'Услуги' : 'Время'}</span>
-                                                <span className="font-bold text-sm text-neutral-900">{step === 'specialist' ? (state.selectedEmployee?.name || 'Любой') : step === 'services' ? (state.selectedServices.length ? `${state.selectedServices.length} выбрано` : 'Выбрать') : state.selectedSlot ? format(new Date(state.selectedSlot.start_time), 'HH:mm, d MMM', { locale: ru }) : 'Выбрать'}</span>
+                                                <span className="font-bold text-sm text-neutral-900">{step === 'specialist' ? (state.selectedEmployee?.name || 'Любой') : step === 'services' ? (state.selectedServices.length ? `${state.selectedServices.length} выбрано` : 'Выбрать') : state.selectedSlot ? DateTime.fromISO(state.selectedSlot.start_time).setZone(branch?.timezone || 'Europe/Minsk').setLocale('ru').toFormat('HH:mm, d MMM') : 'Выбрать'}</span>
                                             </div>
                                         </div>
                                         <ChevronRight className="h-5 w-5 opacity-20" />
@@ -110,7 +110,7 @@ export function BookingWidget({ company, branch, employees, services, categories
                                                 <div className="flex flex-wrap gap-2">
                                                     {emp.nearestSlots.map((slot: any) => (
                                                         // ФИКС ПЕРЕДАЧИ ID МАСТЕРА ПРИ КЛИКЕ ИЗ КАРТОЧКИ
-                                                        <button key={slot.start_time} onClick={(e) => { e.stopPropagation(); state.handleSelectSlot(slot, emp.id); }} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95", state.selectedSlot?.start_time === slot.start_time ? "bg-black text-white shadow-md" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200")}>{format(new Date(slot.start_time), 'HH:mm')}</button>
+                                                        <button key={slot.start_time} onClick={(e) => { e.stopPropagation(); state.handleSelectSlot(slot, emp.id); }} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95", state.selectedSlot?.start_time === slot.start_time ? "bg-black text-white shadow-md" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200")}>{DateTime.fromISO(slot.start_time).setZone(branch?.timezone || 'Europe/Minsk').toFormat('HH:mm')}</button>
                                                     ))}
                                                 </div>
                                             </div>
