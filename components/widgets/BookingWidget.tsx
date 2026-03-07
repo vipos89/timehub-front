@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react';
 import { X, ChevronRight, User, Scissors, Calendar, ArrowLeft, Check, CheckCircle2, Plus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,7 +11,6 @@ import { api } from '@/lib/api';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { DateTime } from 'luxon';
-import { toast } from 'sonner';
 import { EmployeeAvailableSlots } from './EmployeeAvailableSlots';
 import { cn } from '@/lib/utils';
 import { useBookingLogic, Step } from './useBookingLogic';
@@ -25,7 +23,7 @@ export function BookingWidget({ company, branch, employees, services, categories
     }, [settings]);
 
     const stepsOrder = useMemo(() => config.stepsOrder || ['datetime', 'services', 'specialist'], [config.stepsOrder]);
-    const slotStep = config.slotStep || 30; // Используем настройку из JSON
+    const slotStep = config.slotStep || 30;
 
     const state = useBookingLogic({ initialEmployees: employees, initialServices: services, stepsOrder, branch, slotStep });
     const [clientData, setClientData] = useState({ name: '', phone: '', comment: '' });
@@ -33,7 +31,7 @@ export function BookingWidget({ company, branch, employees, services, categories
     const bookingMutation = useMutation({
         mutationFn: async () => {
             const customerRes = await api.post('/customers', { company_id: company.id, branch_id: branch.id, first_name: clientData.name, phone: clientData.phone });
-            const empId = state.selectedEmployee?.id === 'any' ? state.selectedSlot?.employee_id : state.selectedEmployee?.id;
+            const empId = state.selectedEmployee?.id;
             const payload = {
                 company_id: company.id, branch_id: branch.id, employee_id: empId, client_id: customerRes.data.id,
                 start_time: state.selectedSlot.start_time,
@@ -49,8 +47,8 @@ export function BookingWidget({ company, branch, employees, services, categories
     return (
         <div className="w-full h-full relative overflow-hidden flex flex-col bg-white" style={{ borderRadius: `${config.borderRadius || 28}px` }}>
             <div className="shrink-0 px-6 pt-6 flex items-center justify-between z-50">
-                <button onClick={state.goBack} className="p-2.5 bg-neutral-100 rounded-xl active:scale-90 shadow-sm text-neutral-600"><ArrowLeft className="h-5 w-5" /></button>
-                <button onClick={() => { state.reset(); onClose?.(); }} className="p-2.5 bg-neutral-100 rounded-xl active:scale-90 shadow-sm text-neutral-600"><X className="h-5 w-5" /></button>
+                <button onClick={state.goBack} className="p-2.5 bg-neutral-100 rounded-xl transition-all active:scale-90 shadow-sm text-neutral-600"><ArrowLeft className="h-5 w-5" /></button>
+                <button onClick={() => { state.reset(); onClose?.(); }} className="p-2.5 bg-neutral-100 rounded-xl transition-all active:scale-90 shadow-sm text-neutral-600"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 pb-32 pt-2">
@@ -83,23 +81,53 @@ export function BookingWidget({ company, branch, employees, services, categories
                 {state.currentView === 'specialist' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h2 className="text-2xl font-black text-neutral-900">Выберите мастера</h2>
-                        <div className="space-y-3">
+                        <div className="space-y-3 pb-24">
                             {state.employeesWithStatus.map((emp) => {
                                 const isSelected = state.selectedEmployee?.id === emp.id;
+                                const canSelect = emp.canAcceptBooking;
+                                const hasSlots = emp.nearestSlots?.length > 0;
+
                                 return (
-                                    <div key={emp.id} className={cn("p-4 border-2 rounded-[28px] transition-all flex flex-col gap-4", isSelected ? "border-black bg-white" : "border-neutral-100 bg-white", !emp.canAcceptBooking && "opacity-60")}>
+                                    <div key={emp.id} className={cn(
+                                        "p-4 border-2 rounded-[28px] transition-all flex flex-col gap-4 shadow-sm",
+                                        isSelected ? "border-black bg-white shadow-md" : "border-neutral-100 bg-white",
+                                        !canSelect && !hasSlots && "opacity-50 grayscale-[0.5] bg-neutral-50/50"
+                                    )}>
                                         <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-4 cursor-pointer" onClick={() => emp.canAcceptBooking && state.handleSelectSpecialist(emp)}>
-                                                {emp.id === 'any' ? <div className="h-12 w-12 rounded-full bg-neutral-900 flex items-center justify-center text-white"><Users className="h-6 w-6" /></div> : <Avatar className="h-12 w-12 border-2 border-white"><AvatarImage src={emp.avatar_url} /><AvatarFallback>{emp.name[0]}</AvatarFallback></Avatar>}
-                                                <div className="flex flex-col text-left"><span className="font-bold text-neutral-900">{emp.name}</span><span className="text-[10px] uppercase font-black opacity-40">{emp.position}</span></div>
+                                            <div className="flex items-center gap-4 cursor-pointer" onClick={() => canSelect && state.handleSelectSpecialist(emp)}>
+                                                {emp.id === 'any' ? <div className="h-12 w-12 rounded-full bg-neutral-900 flex items-center justify-center text-white shadow-md"><Users className="h-6 w-6" /></div> : <Avatar className="h-12 w-12 border-2 border-white shadow-sm"><AvatarImage src={emp.avatar_url} /><AvatarFallback>{emp.name[0]}</AvatarFallback></Avatar>}
+                                                <div className="flex flex-col text-left">
+                                                    <span className="font-bold text-neutral-900">{emp.name}</span>
+                                                    <span className="text-[10px] uppercase font-black opacity-40">
+                                                        {canSelect ? emp.position : emp.reason}
+                                                    </span>
+                                                </div>
                                             </div>
-                                            {isSelected && <Check className="h-5 w-5 text-emerald-500" />}
+                                            {isSelected && <div className="h-6 w-6 bg-emerald-500 rounded-full flex items-center justify-center shadow-sm"><Check className="h-4 w-4 text-white" /></div>}
                                         </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {(emp.nearestSlots || []).map((slot: any) => (
-                                                <button key={slot.start_time} onClick={() => state.handleSelectSlot(slot)} className={cn("px-4 py-2 rounded-xl text-xs font-bold transition-all", state.selectedSlot?.start_time === slot.start_time ? "bg-black text-white" : "bg-neutral-100 hover:bg-neutral-200")}>{format(new Date(slot.start_time), 'HH:mm')}</button>
-                                            ))}
-                                        </div>
+
+                                        {/* Ближайшее время для записи (динамическая дата) */}
+                                        {hasSlots && (
+                                            <div className="space-y-2 pt-2 border-t border-neutral-50">
+                                                <div className="text-[10px] font-bold text-neutral-400 uppercase tracking-tight">
+                                                    Ближайшее время для записи <span className="text-neutral-900">{emp.displayDateLabel}</span>:
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {emp.nearestSlots.map((slot: any) => (
+                                                        <button
+                                                            key={slot.start_time}
+                                                            onClick={() => state.handleSelectSlot(slot)}
+                                                            className={cn(
+                                                                "px-4 py-2 rounded-xl text-xs font-bold transition-all active:scale-95",
+                                                                state.selectedSlot?.start_time === slot.start_time ? "bg-black text-white shadow-md" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                                                            )}
+                                                        >
+                                                            {format(new Date(slot.start_time), 'HH:mm')}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -108,36 +136,18 @@ export function BookingWidget({ company, branch, employees, services, categories
                 )}
 
                 {state.currentView === 'services' && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <h2 className="text-2xl font-black text-neutral-900">Выберите услуги</h2>
                         {categories.map((cat) => {
-                            // Добавлена защита (state.availableServices || [])
                             const catServices = (state.availableServices || []).filter(s => s.category_id === cat.id);
                             if (catServices.length === 0) return null;
-
                             return (
                                 <div key={cat.id} className="space-y-3">
-                                    <h3 className="text-[10px] font-black uppercase opacity-30 pl-1">{cat.name}</h3>
+                                    <h3 className="text-[10px] font-black uppercase opacity-30 pl-1 tracking-widest">{cat.name}</h3>
                                     {catServices.map((svc) => (
-                                        <div
-                                            key={svc.id}
-                                            onClick={() => state.handleSelectService(svc)}
-                                            className={cn(
-                                                "p-5 border-2 rounded-[24px] cursor-pointer flex items-center justify-between transition-all bg-white shadow-sm",
-                                                state.selectedServices.some(s => s.id === svc.id) ? "border-black bg-neutral-50" : "border-neutral-100 hover:border-neutral-200"
-                                            )}
-                                        >
-                                            <div className="flex flex-col gap-1">
-                                                <span className="font-bold text-neutral-900">{svc.name}</span>
-                                                <span className="text-xs font-medium opacity-40 text-neutral-600">
-                                                    {state.getSvcDuration(svc, state.selectedEmployee?.id)} мин • {state.getSvcPrice(svc, state.selectedEmployee?.id)} BYN
-                                                </span>
-                                            </div>
-                                            {state.selectedServices.some(s => s.id === svc.id) ? (
-                                                <div className="h-10 w-10 bg-black text-white rounded-2xl flex items-center justify-center shadow-inner"><Check className="h-5 w-5" /></div>
-                                            ) : (
-                                                <div className="h-10 w-10 bg-neutral-50 text-neutral-400 rounded-2xl flex items-center justify-center"><Plus className="h-5 w-5" /></div>
-                                            )}
+                                        <div key={svc.id} onClick={() => state.handleSelectService(svc)} className={cn("p-5 border-2 rounded-[24px] cursor-pointer flex items-center justify-between transition-all bg-white shadow-sm", state.selectedServices.some(s => s.id === svc.id) ? "border-black bg-neutral-50" : "border-neutral-100", !svc.canDo && "opacity-40 grayscale cursor-not-allowed")}>
+                                            <div className="flex flex-col gap-1"><span className="font-bold text-neutral-900">{svc.name}</span><span className="text-xs font-medium opacity-40">{svc.canDo ? `${state.getSvcDuration(svc, state.selectedEmployee?.id)} мин • ${svc.price} BYN` : svc.reason}</span></div>
+                                            {state.selectedServices.some(s => s.id === svc.id) ? <div className="h-10 w-10 bg-black text-white rounded-2xl flex items-center justify-center shadow-inner"><Check className="h-5 w-5" /></div> : <div className="h-10 w-10 bg-neutral-50 text-neutral-400 rounded-2xl flex items-center justify-center"><Plus className="h-5 w-5" /></div>}
                                         </div>
                                     ))}
                                 </div>
@@ -147,18 +157,11 @@ export function BookingWidget({ company, branch, employees, services, categories
                 )}
 
                 {state.currentView === 'datetime' && (
-                    <div className="space-y-6 animate-in fade-in duration-300">
-                        <h2 className="text-2xl font-black text-neutral-900 px-1">Выберите время</h2>
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 px-1">
+                        <h2 className="text-2xl font-black text-neutral-900">Выберите время</h2>
                         <EmployeeAvailableSlots
-                            // Ключевой момент: если мастер не выбран или выбран "any", шлем всех ID
-                            employeeIds={
-                                (state.selectedEmployee && state.selectedEmployee.id !== 'any')
-                                    ? state.selectedEmployee.id
-                                    : employees.map(e => e.id).join(',')
-                            }
-                            duration={state.totalDuration}
-                            step={slotStep}
-                            onSlotSelect={state.handleSelectSlot}
+                            employeeIds={(state.selectedEmployee && state.selectedEmployee.id !== 'any') ? state.selectedEmployee.id : employees.map(e => e.id).join(',')}
+                            duration={state.totalDuration} timezone={branch?.timezone} step={slotStep} onSlotSelect={state.handleSelectSlot}
                         />
                     </div>
                 )}
