@@ -15,7 +15,11 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
     const currentView = history[history.length - 1] || 'home';
     const allEmpIds = initialEmployees.map((e: any) => e.id).join(',');
 
-    // 1. Запрос доступных дат (на месяц вперед)
+    const getNextStep = useCallback((current: Step) => {
+        const idx = stepsOrder.indexOf(current);
+        return (idx !== -1 && idx < stepsOrder.length - 1) ? (stepsOrder[idx + 1] as Step) : 'profile';
+    }, [stepsOrder]);
+
     const { data: availableDates = [] } = useQuery({
         queryKey: ['availableDates', allEmpIds, slotStep],
         queryFn: async () => {
@@ -27,7 +31,6 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
         enabled: initialEmployees.length > 0
     });
 
-    // 2. Слоты на текущую выбранную дату
     const { data: daySlots = [] } = useQuery({
         queryKey: ['daySlots', branch?.id, viewedDate, allEmpIds, slotStep],
         queryFn: async () => {
@@ -38,14 +41,11 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
         enabled: !!viewedDate && initialEmployees.length > 0
     });
 
-    // 3. Загрузка слотов для мастеров из будущего (УВЕЛИЧЕН ДИАПАЗОН ДО 10 ДНЕЙ)
     const { data: futureSlots = [] } = useQuery({
         queryKey: ['futureSlots', allEmpIds, viewedDate, slotStep, availableDates.length],
         queryFn: async () => {
-            // Берем следующие 10 дат, чтобы перекрыть больничные и отгулы
             const nextDates = availableDates.filter((d: string) => d > viewedDate).slice(0, 10);
             if (nextDates.length === 0) return [];
-
             const promises = nextDates.map((date: string) =>
                 api.get(`/slots`, { params: { employee_ids: allEmpIds, date, duration: slotStep, step: slotStep } })
             );
@@ -55,7 +55,14 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
         enabled: availableDates.length > 0
     });
 
-    // ХЕЛПЕРЫ (без изменений)
+    const checkEmployeeSkills = useCallback((empId: any, servicesToCheck = selectedServices) => {
+        if (servicesToCheck.length === 0) return true;
+        return servicesToCheck.every(svc =>
+            !svc.employees || svc.employees.length === 0 ||
+            svc.employees.some((es: any) => String(es.employee_id) === String(empId))
+        );
+    }, [selectedServices]);
+
     const getSvcDuration = useCallback((svc: any, empId: any) => {
         const override = svc.employees?.find((e: any) => String(e.employee_id) === String(empId));
         return override?.duration_minutes || svc.duration_minutes || 30;
@@ -71,77 +78,78 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
         return selectedServices.reduce((sum, s) => sum + getSvcDuration(s, empId), 0);
     }, [selectedServices, getSvcDuration]);
 
-    const checkEmployeeSkills = useCallback((empId: any) => {
-        if (selectedServices.length === 0) return true;
-        return selectedServices.every(svc =>
-            !svc.employees || svc.employees.length === 0 ||
-            svc.employees.some((es: any) => String(es.employee_id) === String(empId))
+    // ФИКС ПОИСКА: Ищем и в текущих, и в будущих слотах
+    const resolveAnyMaster = useCallback((slot: any, services: any[]) => {
+        if (!slot || services.length === 0) return false;
+        const targetTime = slot.start_time.substring(0, 16);
+
+        const allSlots = Array.isArray(daySlots) && Array.isArray(futureSlots)
+            ? [...daySlots, ...futureSlots]
+            : (Array.isArray(daySlots) ? daySlots : []);
+
+        const bestMasterSlot = allSlots.find((s: any) =>
+            s.start_time.substring(0, 16) === targetTime &&
+            checkEmployeeSkills(s.employee_id, services) &&
+            s.max_duration >= services.reduce((sum, svc) => sum + getSvcDuration(svc, s.employee_id), 0)
         );
-    }, [selectedServices]);
 
-    const getNextStep = useCallback((current: Step) => {
-        const idx = stepsOrder.indexOf(current);
-        return (idx !== -1 && idx < stepsOrder.length - 1) ? stepsOrder[idx + 1] : 'profile';
-    }, [stepsOrder]);
+        if (bestMasterSlot) {
+            setSelectedEmployee(initialEmployees.find((e: any) => String(e.id) === String(bestMasterSlot.employee_id)));
+            return true;
+        }
+        return false;
+    }, [daySlots, futureSlots, initialEmployees, checkEmployeeSkills, getSvcDuration]);
 
-    // МАСТЕРА С ПРОВЕРКОЙ БЛИЖАЙШЕЙ ДАТЫ
+    const isBookingReady = useMemo(() => {
+        return selectedServices.length > 0 && !!selectedSlot && !!selectedEmployee && selectedEmployee.id !== 'any';
+    }, [selectedServices, selectedSlot, selectedEmployee]);
+
     const employeesWithStatus = useMemo(() => {
         const currentSlotsArray = Array.isArray(daySlots) ? daySlots : [];
         const futureSlotsArray = Array.isArray(futureSlots) ? futureSlots : [];
 
-        return initialEmployees.map((emp: any) => {
+        const statusList = initialEmployees.map((emp: any) => {
             const hasSkills = checkEmployeeSkills(emp.id);
             const neededDuration = calculateTotalDuration(emp.id);
-
-            // 1. Слоты на сегодня
-            let activeSlots = currentSlotsArray
-                .filter((s: any) => String(s.employee_id) === String(emp.id) && s.max_duration >= neededDuration)
-                .sort((a, b) => a.start_time.localeCompare(b.start_time));
-
+            let activeSlots = currentSlotsArray.filter((s: any) => String(s.employee_id) === String(emp.id) && s.max_duration >= neededDuration).sort((a, b) => a.start_time.localeCompare(b.start_time));
             let dateLabel = 'сегодня';
-            let reason = '';
-
-            // 2. Если на сегодня нет, ищем в расширенном будущем (теперь найдем Пашу на 11.03)
             if (activeSlots.length === 0 && hasSkills) {
-                const empFutureSlots = futureSlotsArray
-                    .filter((s: any) => String(s.employee_id) === String(emp.id) && s.max_duration >= neededDuration)
-                    .sort((a, b) => a.start_time.localeCompare(b.start_time));
-
+                const empFutureSlots = futureSlotsArray.filter((s: any) => String(s.employee_id) === String(emp.id) && s.max_duration >= neededDuration).sort((a, b) => a.start_time.localeCompare(b.start_time));
                 if (empFutureSlots.length > 0) {
-                    const firstAvailableDate = empFutureSlots[0].start_time.split('T')[0];
-                    dateLabel = DateTime.fromISO(firstAvailableDate).setLocale('ru').toFormat('ccc, d MMM');
-                    activeSlots = empFutureSlots.filter(s => s.start_time.startsWith(firstAvailableDate));
+                    const firstDate = empFutureSlots[0].start_time.split('T')[0];
+                    dateLabel = DateTime.fromISO(firstDate).setLocale('ru').toFormat('ccc, d MMM');
+                    activeSlots = empFutureSlots.filter(s => s.start_time.startsWith(firstDate));
                 }
             }
-
-            if (!hasSkills) {
-                reason = 'Не оказывает выбранные услуги';
-            } else if (activeSlots.length === 0) {
-                reason = 'Нет свободных окон';
-            }
-
-            return {
-                ...emp,
-                canAcceptBooking: hasSkills && activeSlots.length > 0,
-                nearestSlots: activeSlots.slice(0, 5),
-                displayDateLabel: dateLabel,
-                reason
-            };
+            return { ...emp, canAcceptBooking: hasSkills && activeSlots.length > 0, nearestSlots: activeSlots.slice(0, 5), displayDateLabel: dateLabel, reason: !hasSkills ? 'Не делает выбранное' : activeSlots.length === 0 ? 'Нет окон' : '' };
         });
-    }, [initialEmployees, selectedServices, daySlots, futureSlots, checkEmployeeSkills, calculateTotalDuration, viewedDate]);
+
+        const validEmpIds = selectedServices.length > 0
+            ? initialEmployees.filter((emp: any) => checkEmployeeSkills(emp.id)).map((emp: any) => String(emp.id))
+            : initialEmployees.map((emp: any) => String(emp.id));
+
+        let anySlots = currentSlotsArray.filter((s: any) => validEmpIds.includes(String(s.employee_id))).filter((v, i, a) => a.findIndex(t => t.start_time === v.start_time) === i).sort((a, b) => a.start_time.localeCompare(b.start_time));
+        let anyDateLabel = 'сегодня';
+        if (anySlots.length === 0) {
+            const anyFutureSlots = futureSlotsArray.filter((s: any) => validEmpIds.includes(String(s.employee_id))).filter((v, i, a) => a.findIndex(t => t.start_time === v.start_time) === i).sort((a, b) => a.start_time.localeCompare(b.start_time));
+            if (anyFutureSlots.length > 0) {
+                const firstAnyDate = anyFutureSlots[0].start_time.split('T')[0];
+                anyDateLabel = DateTime.fromISO(firstAnyDate).setLocale('ru').toFormat('ccc, d MMM');
+                anySlots = anyFutureSlots.filter(s => s.start_time.startsWith(firstAnyDate));
+            }
+        }
+        return [{ id: 'any', name: 'Любой мастер', position: 'Назначим свободного', canAcceptBooking: anySlots.length > 0, nearestSlots: anySlots.slice(0, 5), displayDateLabel: anyDateLabel, reason: anySlots.length === 0 ? 'Нет свободных' : '' }, ...statusList];
+    }, [initialEmployees, selectedServices, daySlots, futureSlots, checkEmployeeSkills, calculateTotalDuration]);
 
     return {
         currentView, selectedEmployee, selectedServices, selectedSlot, viewedDate,
-        employeesWithStatus,
+        employeesWithStatus, isBookingReady,
         availableServices: initialServices.map((svc: any) => {
-            let reason = '';
             let canDo = true;
             if (selectedEmployee && selectedEmployee.id !== 'any') {
-                const isPerformedByEmp = !svc.employees || svc.employees.length === 0 ||
-                    svc.employees.some((e: any) => String(e.employee_id) === String(selectedEmployee.id));
-                if (!isPerformedByEmp) { canDo = false; reason = `Мастер ${selectedEmployee.name} не делает это`; }
+                if (!checkEmployeeSkills(selectedEmployee.id, [svc])) canDo = false;
             }
-            return { ...svc, canDo, reason };
+            return { ...svc, canDo, reason: !canDo ? `Мастер ${selectedEmployee?.name} не делает это` : '' };
         }),
         totalDuration: calculateTotalDuration(selectedEmployee?.id || selectedSlot?.employee_id),
         totalPrice: selectedServices.reduce((sum, s) => sum + getSvcPrice(s, selectedEmployee?.id || selectedSlot?.employee_id), 0),
@@ -149,24 +157,86 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
         goBack: () => setHistory(prev => prev.length > 1 ? prev.slice(0, -1) : ['home']),
         reset: () => { setSelectedEmployee(null); setSelectedServices([]); setSelectedSlot(null); setViewedDate(DateTime.now().toISODate()!); setHistory(['home']); },
         getSvcDuration, getSvcPrice, getNextStep, setViewedDate,
+
         handleSelectService: (svc: any) => {
             const exists = selectedServices.some(s => s.id === svc.id);
-            setSelectedServices(exists ? selectedServices.filter(s => s.id !== svc.id) : [...selectedServices, svc]);
+            const nextServices = exists ? selectedServices.filter(s => s.id !== svc.id) : [...selectedServices, svc];
+            setSelectedServices(nextServices);
+
+            if (selectedSlot) {
+                if (selectedEmployee && selectedEmployee.id !== 'any') {
+                    const newDuration = nextServices.reduce((sum, s) => sum + getSvcDuration(s, selectedEmployee.id), 0);
+                    const masterCanDo = checkEmployeeSkills(selectedEmployee.id, nextServices);
+                    if (!masterCanDo || selectedSlot.max_duration < newDuration) {
+                        setSelectedSlot(null);
+                    }
+                } else {
+                    const found = resolveAnyMaster(selectedSlot, nextServices);
+                    if (!found && nextServices.length > 0) {
+                        setSelectedSlot(null);
+                    }
+                }
+            }
         },
+
         handleSelectSpecialist: (emp: any) => {
             if (emp && !emp.canAcceptBooking) return;
+
+            if (emp.id === 'any' && selectedSlot && selectedServices.length > 0) {
+                resolveAnyMaster(selectedSlot, selectedServices);
+                setHistory(prev => [...prev, getNextStep(currentView as Step)]);
+                return;
+            }
+
             setSelectedEmployee(emp);
+
+            if (selectedSlot && emp.id !== 'any') {
+                const targetTime = selectedSlot.start_time.substring(0, 16);
+                const allSlots = Array.isArray(daySlots) && Array.isArray(futureSlots) ? [...daySlots, ...futureSlots] : (Array.isArray(daySlots) ? daySlots : []);
+                const newMasterSlot = allSlots.find((s: any) =>
+                    String(s.employee_id) === String(emp.id) &&
+                    s.start_time.substring(0, 16) === targetTime
+                );
+
+                if (newMasterSlot && newMasterSlot.max_duration >= calculateTotalDuration(emp.id)) {
+                    setSelectedSlot(newMasterSlot);
+                } else {
+                    setSelectedSlot(null);
+                }
+            }
             setHistory(prev => [...prev, getNextStep(currentView as Step)]);
         },
-        handleSelectSlot: (slot: any) => {
+
+        // ФИКС: Явный параметр forceEmployeeId предотвращает "магическую" смену мастера
+        handleSelectSlot: (slot: any, forceEmployeeId?: string | number) => {
             setSelectedSlot(slot);
             if (slot) {
                 const slotDate = slot.start_time.split('T')[0];
                 if (slotDate !== viewedDate) setViewedDate(slotDate);
-                const master = initialEmployees.find(e => String(e.id) === String(slot.employee_id));
-                if (master) setSelectedEmployee(master);
+
+                if (forceEmployeeId && forceEmployeeId !== 'any') {
+                    // Пользователь кликнул на слот конкретного мастера (например, Юли)
+                    const master = initialEmployees.find((e: any) => String(e.id) === String(forceEmployeeId));
+                    if (master) setSelectedEmployee(master);
+                } else if (!selectedEmployee || selectedEmployee.id === 'any') {
+                    if (selectedServices.length > 0) {
+                        resolveAnyMaster(slot, selectedServices);
+                    } else {
+                        if (forceEmployeeId === 'any') {
+                            setSelectedEmployee({ id: 'any', name: 'Любой мастер' });
+                        } else {
+                            const master = initialEmployees.find((e: any) => String(e.id) === String(slot.employee_id));
+                            if (master) setSelectedEmployee(master);
+                        }
+                    }
+                } else {
+                    // Мастер УЖЕ выбран, просто проверяем его навыки
+                    if (!checkEmployeeSkills(selectedEmployee.id)) {
+                        resolveAnyMaster(slot, selectedServices);
+                    }
+                }
             }
-            setHistory(prev => [...prev, getNextStep(currentView as Step)]);
+            if (slot) setHistory(prev => [...prev, getNextStep(currentView as Step)]);
         }
     };
 }
