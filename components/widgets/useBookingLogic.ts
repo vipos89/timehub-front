@@ -21,11 +21,12 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
     }, [stepsOrder]);
 
     const { data: availableDates = [] } = useQuery({
-        queryKey: ['availableDates', allEmpIds, slotStep],
+        queryKey: ['availableDates', allEmpIds, slotStep, branch?.timezone],
         queryFn: async () => {
             const start = DateTime.now().toISODate();
             const end = DateTime.now().plus({ days: 30 }).toISODate();
-            const res = await api.get('/available-dates', { params: { employee_ids: allEmpIds, start, end, duration: slotStep, step: slotStep } });
+            const tz = branch?.timezone || 'Europe/Minsk';
+            const res = await api.get('/available-dates', { params: { employee_ids: allEmpIds, start, end, duration: slotStep, step: slotStep, timezone: tz } });
             return res.data || [];
         },
         enabled: initialEmployees.length > 0
@@ -34,20 +35,21 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
     const { data: daySlots = [] } = useQuery({
         queryKey: ['daySlots', branch?.id, viewedDate, allEmpIds, slotStep],
         queryFn: async () => {
-            const tz = encodeURIComponent(branch?.timezone || 'Europe/Minsk');
-            const res = await api.get(`/slots?employee_ids=${allEmpIds}&date=${viewedDate}&duration=${slotStep}&step=${slotStep}&timezone=${tz}`);
+            const tz = branch?.timezone || 'Europe/Minsk';
+            const res = await api.get(`/slots?employee_ids=${allEmpIds}&date=${viewedDate}&duration=${slotStep}&step=${slotStep}&timezone=${encodeURIComponent(tz)}`);
             return res.data || [];
         },
         enabled: !!viewedDate && initialEmployees.length > 0
     });
 
     const { data: futureSlots = [] } = useQuery({
-        queryKey: ['futureSlots', allEmpIds, viewedDate, slotStep, availableDates.length],
+        queryKey: ['futureSlots', allEmpIds, viewedDate, slotStep, availableDates.length, branch?.timezone],
         queryFn: async () => {
             const nextDates = availableDates.filter((d: string) => d > viewedDate).slice(0, 10);
             if (nextDates.length === 0) return [];
+            const tz = branch?.timezone || 'Europe/Minsk';
             const promises = nextDates.map((date: string) =>
-                api.get(`/slots`, { params: { employee_ids: allEmpIds, date, duration: slotStep, step: slotStep } })
+                api.get(`/slots`, { params: { employee_ids: allEmpIds, date, duration: slotStep, step: slotStep, timezone: tz } })
             );
             const results = await Promise.all(promises);
             return results.flatMap(r => r.data || []);
