@@ -151,14 +151,14 @@ export default function LocalBranchSettingsPage() {
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="grid gap-1.5">
                                                 <Label className="text-[10px] font-black uppercase opacity-40 ml-1">Страна</Label>
-                                                <Select value={selectedCountryId} onValueChange={(val) => { setSelectedCountryId(val); setSelectedRegionId(''); setBranchForm(p => ({...p, country_id: parseInt(val)})); }}>
+                                                <Select value={selectedCountryId} onValueChange={(val) => { setSelectedCountryId(val); setSelectedRegionId(''); setBranchForm((p: any) => ({...p, country_id: parseInt(val)})); }}>
                                                     <SelectTrigger className="h-10 rounded-xl bg-neutral-50 border-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
                                                     <SelectContent>{countries?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
                                                 </Select>
                                             </div>
                                             <div className="grid gap-1.5">
                                                 <Label className="text-[10px] font-black uppercase opacity-40 ml-1">Регион</Label>
-                                                <Select value={selectedRegionId} onValueChange={(val) => { setSelectedRegionId(val); setBranchForm(p => ({...p, region_id: parseInt(val)})); }}>
+                                                <Select value={selectedRegionId} onValueChange={(val) => { setSelectedRegionId(val); setBranchForm((p: any) => ({...p, region_id: parseInt(val)})); }}>
                                                     <SelectTrigger className="h-10 rounded-xl bg-neutral-50 border-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
                                                     <SelectContent>{regions?.map((r: any) => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}</SelectContent>
                                                 </Select>
@@ -166,7 +166,7 @@ export default function LocalBranchSettingsPage() {
                                         </div>
                                         <div className="grid gap-1.5">
                                             <Label className="text-[10px] font-black uppercase opacity-40 ml-1">Город</Label>
-                                            <Select value={branchForm.city_id?.toString()} onValueChange={(val) => setBranchForm(p => ({...p, city_id: parseInt(val)}))}>
+                                            <Select value={branchForm.city_id?.toString()} onValueChange={(val) => setBranchForm((p: any) => ({...p, city_id: parseInt(val)}))}>
                                                 <SelectTrigger className="h-10 rounded-xl bg-neutral-50 border-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
                                                 <SelectContent>{cities?.map((city: any) => <SelectItem key={city.id} value={city.id.toString()}>{city.name}</SelectItem>)}</SelectContent>
                                             </Select>

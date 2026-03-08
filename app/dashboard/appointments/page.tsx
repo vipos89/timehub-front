@@ -320,7 +320,7 @@ export default function AppointmentsPage() {
                                     <CurrentTimeMarker />
 
                                     {appointments.filter((a: any) => a.employee_id === emp.id).map((app: any) => (
-                                        <div key={app.id} onClick={(e) => { e.stopPropagation(); setSelectedAppointment(app); setEditorMode('edit'); setIsEditorOpen(true); }} style={getAppointmentStyle(app)} className={cn("absolute left-1.5 right-1.5 rounded-xl p-2.5 border-l-[6px] shadow-lg shadow-neutral-200/20 cursor-pointer transition-all hover:scale-[1.03] hover:z-20 group overflow-hidden", app.status === 'confirmed' ? "bg-emerald-50 border-emerald-500" : app.status === 'arrived' ? "bg-blue-50 border-blue-500" : app.status === 'no_show' ? "bg-red-50 border-red-500" : "bg-amber-50 border-amber-500")}>
+                                        <div key={app.id} onClick={(e) => { e.stopPropagation(); setSelectedAppointment(app); setEditorMode('edit'); setIsEditorOpen(true); }} style={getAppointmentStyle(app)} className={cn("absolute left-1.5 right-1.5 rounded-xl p-2.5 border-l-[6px] shadow-lg shadow-neutral-200/20 cursor-pointer transition-all hover:scale-[1.03] hover:z-20 group overflow-hidden", app.status === 'confirmed' ? "bg-emerald-50 border-emerald-500" : (app.status === 'arrived' || app.status === 'finished') ? "bg-blue-50 border-blue-500" : app.status === 'no_show' ? "bg-red-50 border-red-500" : "bg-amber-50 border-amber-500")}>
                                             <div className="flex flex-col h-full relative">
                                                 {/* Source & New Badge icons */}
                                                 <div className="absolute top-0 right-0 flex items-center gap-1">

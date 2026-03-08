@@ -88,7 +88,7 @@ export default function DashboardPage() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                 <StatCard 
                     title="Выручка" 
-                    value={`${stats?.total_revenue?.toLocaleString() || 0} ₽`}
+                    value={`${stats?.total_revenue?.toLocaleString() || 0} BYN`}
                     desc="Сумма завершенных визитов"
                     icon={DollarSign}
                     trend="+12.5%"
@@ -96,7 +96,7 @@ export default function DashboardPage() {
                 />
                 <StatCard 
                     title="Средний чек" 
-                    value={`${Math.round(stats?.avg_check || 0).toLocaleString()} ₽`}
+                    value={`${Math.round(stats?.avg_check || 0).toLocaleString()} BYN`}
                     desc="Выручка на одного клиента"
                     icon={TrendingUp}
                     trend="+2.1%"
@@ -110,11 +110,12 @@ export default function DashboardPage() {
                     isLoading={isLoading}
                 />
                 <StatCard 
-                    title="Конверсия" 
-                    value={`${stats?.total_appointments > 0 ? Math.round((stats?.finished_appointments / stats?.total_appointments) * 100) : 0}%`}
-                    desc="Доля пришедших клиентов"
-                    icon={MousePointerClick}
+                    title="Загрузка" 
+                    value={`${stats?.utilization?.toFixed(1) || 0}%`}
+                    desc="Эффективность филиала"
+                    icon={Clock}
                     isLoading={isLoading}
+                    isUtilization
                 />
             </div>
 
@@ -201,6 +202,61 @@ export default function DashboardPage() {
                             {(!stats?.services_usage || stats?.services_usage.length === 0) && !isLoading && (
                                 <div className="text-center py-20 text-neutral-300 italic text-sm border-2 border-dashed border-neutral-50 rounded-[2rem]">Нет данных для отображения</div>
                             )}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Employee Performance Grid */}
+            <div className="grid gap-8">
+                <Card className="rounded-[2.5rem] border-none shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="p-8 border-b border-neutral-50 bg-neutral-50/20">
+                        <CardTitle className="text-xl font-black uppercase tracking-tight text-neutral-900 italic">Эффективность мастеров</CardTitle>
+                        <CardDescription className="text-[10px] font-bold uppercase tracking-widest mt-1 text-neutral-400">Показатели выручки и среднего чека</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="bg-neutral-50/50 border-b border-neutral-50">
+                                        <th className="px-8 py-4 text-left text-[9px] font-black uppercase tracking-widest text-neutral-400">Мастер</th>
+                                        <th className="px-8 py-4 text-right text-[9px] font-black uppercase tracking-widest text-neutral-400">Визитов</th>
+                                        <th className="px-8 py-4 text-right text-[9px] font-black uppercase tracking-widest text-neutral-400">Средний чек</th>
+                                        <th className="px-8 py-4 text-right text-[9px] font-black uppercase tracking-widest text-neutral-400">Выручка</th>
+                                        <th className="px-8 py-4 text-right text-[9px] font-black uppercase tracking-widest text-neutral-400">Доля</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(stats?.employee_performance || []).map((emp: any) => (
+                                        <tr key={emp.employee_id} className="border-b border-neutral-50 last:border-0 hover:bg-neutral-50/30 transition-colors group">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-8 w-8 bg-neutral-900 rounded-xl flex items-center justify-center text-[#F5FF82] text-[10px] font-black shadow-sm group-hover:scale-110 transition-transform">
+                                                        {emp.name?.[0]}
+                                                    </div>
+                                                    <span className="text-sm font-black text-neutral-900">{emp.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-5 text-right font-bold text-neutral-600">{emp.visits}</td>
+                                            <td className="px-8 py-5 text-right font-bold text-neutral-600">{Math.round(emp.avg_check).toLocaleString()} BYN</td>
+                                            <td className="px-8 py-5 text-right font-black text-neutral-900">{emp.revenue.toLocaleString()} BYN</td>
+                                            <td className="px-8 py-5 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <span className="text-[10px] font-black text-emerald-500">{Math.round((emp.revenue / (stats?.total_revenue || 1)) * 100)}%</span>
+                                                    <div className="w-12 h-1 bg-neutral-100 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(emp.revenue / (stats?.total_revenue || 1)) * 100}%` }} />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!stats?.employee_performance || stats?.employee_performance.length === 0) && !isLoading && (
+                                        <tr>
+                                            <td colSpan={5} className="py-20 text-center text-neutral-300 italic text-sm">Нет данных по мастерам</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </CardContent>
                 </Card>
@@ -303,7 +359,7 @@ export default function DashboardPage() {
     );
 }
 
-function StatCard({ title, value, desc, icon: Icon, trend, isLoading }: any) {
+function StatCard({ title, value, desc, icon: Icon, trend, isLoading, isUtilization }: any) {
     return (
         <Card className="rounded-[2rem] border-none shadow-sm bg-white hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden group">
             <CardContent className="p-8">
@@ -322,7 +378,17 @@ function StatCard({ title, value, desc, icon: Icon, trend, isLoading }: any) {
                     {isLoading ? (
                         <div className="h-9 w-24 bg-neutral-50 animate-pulse rounded-lg" />
                     ) : (
-                        <h3 className="text-3xl font-black text-neutral-900 italic tracking-tight">{value}</h3>
+                        <div className="flex items-baseline gap-2">
+                            <h3 className="text-3xl font-black text-neutral-900 italic tracking-tight">{value}</h3>
+                        </div>
+                    )}
+                    {isUtilization && !isLoading && (
+                        <div className="h-1.5 w-full bg-neutral-50 rounded-full mt-3 overflow-hidden">
+                            <div 
+                                className="h-full bg-neutral-900 rounded-full transition-all duration-1000" 
+                                style={{ width: `${value}` }}
+                            />
+                        </div>
                     )}
                     <p className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest mt-2">{desc}</p>
                 </div>
