@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -8,8 +8,9 @@ import { BookingWidget } from '@/components/widgets/BookingWidget';
 
 export default function WidgetPage() {
     const { code } = useParams();
+    const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
     
-    // -- 1. DATA QUERIES --
+    // -- 1. WIDGET CONFIG --
     const { data: widget, isLoading: isLoadingWidget } = useQuery({
         queryKey: ['widget', code],
         queryFn: async () => (await api.get(`/widgets/${code}`)).data,
@@ -19,15 +20,15 @@ export default function WidgetPage() {
     const settings = useMemo(() => {
         if (!widget?.settings) return { accentColor: '#F5FF82', stepsOrder: ['services', 'specialist', 'datetime'] };
         const s = typeof widget.settings === 'string' ? JSON.parse(widget.settings) : widget.settings;
-        // Normalize stepsOrder/stepOrder
         const stepsOrder = s.stepsOrder || s.stepOrder || ['services', 'specialist', 'datetime'];
         return { accentColor: '#F5FF82', ...s, stepsOrder };
     }, [widget?.settings]);
 
     const companyId = widget?.company_id;
-    const branchId = widget?.branch_id;
-    const employeeId = widget?.employee_id;
     const widgetType = widget?.widget_type || 'branch';
+    
+    // Default branch from widget or selected by user in network mode
+    const activeBranchId = selectedBranchId || widget?.branch_id;
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ['company', companyId],
@@ -35,43 +36,46 @@ export default function WidgetPage() {
         enabled: !!companyId
     });
 
+    // Load branches for network widget
     const { data: branches = [] } = useQuery({
         queryKey: ['branches', companyId],
         queryFn: async () => (await api.get(`/companies/${companyId}/branches`)).data,
         enabled: !!companyId && widgetType === 'network'
     });
 
-    const { data: branch } = useQuery({
-        queryKey: ['branch', branchId],
-        queryFn: async () => branchId ? (await api.get(`/branches/${branchId}`)).data : null,
-        enabled: !!branchId && widgetType !== 'network'
+    // Load active branch details
+    const { data: branch, isLoading: isLoadingBranch } = useQuery({
+        queryKey: ['branch', activeBranchId],
+        queryFn: async () => activeBranchId ? (await api.get(`/branches/${activeBranchId}`)).data : null,
+        enabled: !!activeBranchId
     });
 
-    const { data: employees = [] } = useQuery({
-        queryKey: ['employees', branchId, employeeId],
+    // Load employees for active branch
+    const { data: employees = [], isLoading: isLoadingEmployees } = useQuery({
+        queryKey: ['employees', activeBranchId, widget?.employee_id],
         queryFn: async () => {
-            if (widgetType === 'master' && employeeId) {
-                const res = await api.get(`/employees/${employeeId}`);
+            if (widgetType === 'master' && widget?.employee_id) {
+                const res = await api.get(`/employees/${widget.employee_id}`);
                 return [res.data];
             }
-            if (branchId) {
-                return (await api.get(`/employees?branch_id=${branchId}`)).data;
+            if (activeBranchId) {
+                return (await api.get(`/employees?branch_id=${activeBranchId}`)).data;
             }
             return [];
         },
-        enabled: (!!branchId && widgetType !== 'network') || (widgetType === 'master' && !!employeeId)
+        enabled: !!activeBranchId || (widgetType === 'master' && !!widget?.employee_id)
     });
 
-    const { data: services = [] } = useQuery({
-        queryKey: ['services', branchId],
-        queryFn: async () => (await api.get(`/branches/${branchId}/services`)).data,
-        enabled: !!branchId && widgetType !== 'network'
+    const { data: services = [], isLoading: isLoadingServices } = useQuery({
+        queryKey: ['services', activeBranchId],
+        queryFn: async () => activeBranchId ? (await api.get(`/branches/${activeBranchId}/services`)).data : [],
+        enabled: !!activeBranchId
     });
 
-    const { data: categories = [] } = useQuery({
-        queryKey: ['categories', branchId],
-        queryFn: async () => (await api.get(`/branches/${branchId}/categories`)).data,
-        enabled: !!branchId && widgetType !== 'network'
+    const { data: categories = [], isLoading: isLoadingCategories } = useQuery({
+        queryKey: ['categories', activeBranchId],
+        queryFn: async () => activeBranchId ? (await api.get(`/branches/${activeBranchId}/categories`)).data : [],
+        enabled: !!activeBranchId
     });
 
     if (isLoadingWidget || isLoadingCompany) {
@@ -93,7 +97,6 @@ export default function WidgetPage() {
         );
     }
 
-    // Merge widgetType into settings for BookingWidget
     const widgetSettings = { ...settings, widgetType };
 
     return (
@@ -108,6 +111,8 @@ export default function WidgetPage() {
                     services={services}
                     categories={categories}
                     settings={widgetSettings}
+                    onBranchSelect={(id: number) => setSelectedBranchId(id)}
+                    isLoadingData={isLoadingBranch || isLoadingEmployees || isLoadingServices || isLoadingCategories}
                 />
             </div>
         </div>

@@ -20,7 +20,9 @@ import {
     Eye,
     EyeOff,
     History,
-    UserX
+    UserX,
+    Sparkles,
+    Globe
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -259,8 +261,9 @@ export function BookingEditor({
             status: formData.status,
             comment: formData.comment,
             total_price: formData.totalPrice,
+            booking_source: 'admin',
             allow_overbooking: allowOverbooking,
-            services: formData.selectedServices.map(s => ({
+            services: formData.selectedServices.map(s => ({ 
                 service_id: s.service_id,
                 service_name: s.service?.name || '',
                 price: s.price,

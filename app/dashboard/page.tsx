@@ -206,8 +206,8 @@ export default function DashboardPage() {
                 </Card>
             </div>
 
-            {/* Bottom Grid: Status Distribution & Tips */}
-            <div className="grid gap-8 md:grid-cols-2">
+            {/* Bottom Grid: Status & Source Distribution */}
+            <div className="grid gap-8 lg:grid-cols-2">
                 <Card className="rounded-[2.5rem] border-none shadow-sm bg-white overflow-hidden">
                     <CardHeader className="p-8 border-b border-neutral-50">
                         <CardTitle className="text-xl font-black uppercase tracking-tight text-neutral-900 italic">Статусы визитов</CardTitle>
@@ -244,7 +244,46 @@ export default function DashboardPage() {
                     </CardContent>
                 </Card>
 
-                <div className="bg-[#F5FF82] rounded-[2.5rem] p-10 flex flex-col justify-between border border-[#e4ee6b] shadow-xl shadow-[#F5FF82]/20 relative overflow-hidden">
+                <Card className="rounded-[2.5rem] border-none shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="p-8 border-b border-neutral-50">
+                        <CardTitle className="text-xl font-black uppercase tracking-tight text-neutral-900 italic">Источники записи</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-8 flex items-center justify-center h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={stats?.source_distribution || []}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={100}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {stats?.source_distribution?.map((entry: any, index: number) => (
+                                        <Cell key={`cell-source-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip 
+                                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                        <div className="flex flex-col gap-3 ml-4">
+                            {stats?.source_distribution?.map((item: any, idx: number) => (
+                                <div key={item.name} className="flex items-center gap-3">
+                                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[(idx + 2) % COLORS.length] }} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{item.name}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* Tips Section */}
+            <div className="grid gap-8">
+                <div className="bg-[#F5FF82] rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between border border-[#e4ee6b] shadow-xl shadow-[#F5FF82]/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10">
                         <Star className="h-40 w-40 text-black fill-black" />
                     </div>
@@ -255,7 +294,7 @@ export default function DashboardPage() {
                             Настройте автоматическое напоминание клиентам, которые не были у вас более 30 дней в разделе "Уведомления".
                         </p>
                     </div>
-                    <Button className="w-fit bg-neutral-900 text-white rounded-2xl h-12 px-8 font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-black/20 hover:bg-black relative z-10">
+                    <Button className="w-fit mt-6 md:mt-0 bg-neutral-900 text-white rounded-2xl h-12 px-8 font-black uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-black/20 hover:bg-black relative z-10">
                         Настроить сейчас
                     </Button>
                 </div>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, RefreshCw, MessageSquare } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, RefreshCw, MessageSquare, Globe, User, Sparkles } from 'lucide-react';
 import { DateTime } from 'luxon';
 import { useBranch } from '@/context/branch-context';
 import { toast } from 'sonner';
@@ -321,12 +321,26 @@ export default function AppointmentsPage() {
 
                                     {appointments.filter((a: any) => a.employee_id === emp.id).map((app: any) => (
                                         <div key={app.id} onClick={(e) => { e.stopPropagation(); setSelectedAppointment(app); setEditorMode('edit'); setIsEditorOpen(true); }} style={getAppointmentStyle(app)} className={cn("absolute left-1.5 right-1.5 rounded-xl p-2.5 border-l-[6px] shadow-lg shadow-neutral-200/20 cursor-pointer transition-all hover:scale-[1.03] hover:z-20 group overflow-hidden", app.status === 'confirmed' ? "bg-emerald-50 border-emerald-500" : app.status === 'arrived' ? "bg-blue-50 border-blue-500" : app.status === 'no_show' ? "bg-red-50 border-red-500" : "bg-amber-50 border-amber-500")}>
-                                            <div className="flex flex-col h-full">
+                                            <div className="flex flex-col h-full relative">
+                                                {/* Source & New Badge icons */}
+                                                <div className="absolute top-0 right-0 flex items-center gap-1">
+                                                    {app.is_new_client && (
+                                                        <div className="bg-[#F5FF82] text-black px-1 rounded-[4px] flex items-center gap-0.5 animate-pulse">
+                                                            <Sparkles className="w-2 h-2" />
+                                                            <span className="text-[7px] font-black uppercase">New</span>
+                                                        </div>
+                                                    )}
+                                                    {app.booking_source === 'widget' ? (
+                                                        <Globe className="w-2.5 h-2.5 text-neutral-400" />
+                                                    ) : (
+                                                        <User className="w-2.5 h-2.5 text-neutral-400" />
+                                                    )}
+                                                </div>
+
                                                 <div className="flex justify-between items-start mb-1">
                                                     <span className="text-[10px] font-black text-neutral-900/40 uppercase tracking-tighter">{DateTime.fromISO(app.start_time.includes('T') ? app.start_time : app.start_time.replace(' ', 'T')).setZone(timezone).toFormat('HH:mm')}</span>
-                                                    {app.comment && <MessageSquare className="w-2.5 h-2.5 text-neutral-900/20" />}
                                                 </div>
-                                                <div className="text-[11px] font-black text-neutral-900 leading-none truncate mb-1">{app.client_first_name || 'Без имени'}</div>
+                                                <div className="text-[11px] font-black text-neutral-900 leading-none truncate mb-1 pr-10">{app.client_first_name || 'Без имени'}</div>
                                                 <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-tighter truncate">{(app.services || []).map((s: any) => serviceMap[s.service_id] || 'Услуга').join(', ')}</div>
                                                 {app.comment && <div className="mt-1.5 text-[8px] italic text-neutral-400 truncate border-t border-black/5 pt-1">{app.comment}</div>}
                                             </div>

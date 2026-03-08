@@ -3,11 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { DateTime } from 'luxon';
 
-export type Step = 'home' | 'specialist' | 'services' | 'datetime' | 'profile' | 'success';
+export type Step = 'home' | 'branches' | 'specialist' | 'services' | 'datetime' | 'profile' | 'success';
 
-export function useBookingLogic({ initialEmployees = [], initialServices = [], stepsOrder, branch, slotStep = 30 }: any) {
+export function useBookingLogic({ initialEmployees = [], initialServices = [], stepsOrder, branch, slotStep = 30, onBranchSelect }: any) {
     const [history, setHistory] = useState<Step[]>(['home']);
-    const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
+    const [selectedEmployee, setSelectedEmployee] = useState<any>(initialEmployees.length === 1 ? initialEmployees[0] : null);
     const [selectedServices, setSelectedServices] = useState<any[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<any>(null);
     const [viewedDate, setViewedDate] = useState<string>(DateTime.now().toISODate()!);
@@ -173,24 +173,18 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
 
         handleSelectSpecialist: (emp: any) => {
             if (emp && !emp.canAcceptBooking) return;
-
             if (emp.id === 'any' && selectedSlot && selectedServices.length > 0) {
                 resolveAnyMaster(selectedSlot, selectedServices);
                 setHistory(prev => [...prev, getNextStep(currentView as Step)]);
                 return;
             }
-
             setSelectedEmployee(emp);
-
             if (selectedSlot && emp.id !== 'any') {
                 const targetTime = selectedSlot.start_time.substring(0, 16);
                 const allSlots = Array.isArray(daySlots) && Array.isArray(futureSlots) ? [...daySlots, ...futureSlots] : (Array.isArray(daySlots) ? daySlots : []);
                 const newMasterSlot = allSlots.find((s: any) => String(s.employee_id) === String(emp.id) && s.start_time.substring(0, 16) === targetTime);
-                if (newMasterSlot && newMasterSlot.max_duration >= calculateTotalDuration(emp.id)) {
-                    setSelectedSlot(newMasterSlot);
-                } else {
-                    setSelectedSlot(null);
-                }
+                if (newMasterSlot && newMasterSlot.max_duration >= calculateTotalDuration(emp.id)) setSelectedSlot(newMasterSlot);
+                else setSelectedSlot(null);
             }
             setHistory(prev => [...prev, getNextStep(currentView as Step)]);
         },
@@ -200,14 +194,12 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
             if (slot) {
                 const slotDate = slot.start_time.split('T')[0];
                 if (slotDate !== viewedDate) setViewedDate(slotDate);
-
                 if (forceEmployeeId && forceEmployeeId !== 'any') {
                     const master = initialEmployees.find((e: any) => String(e.id) === String(forceEmployeeId));
                     if (master) setSelectedEmployee(master);
                 } else if (!selectedEmployee || selectedEmployee.id === 'any') {
-                    if (selectedServices.length > 0) {
-                        resolveAnyMaster(slot, selectedServices);
-                    } else {
+                    if (selectedServices.length > 0) resolveAnyMaster(slot, selectedServices);
+                    else {
                         if (forceEmployeeId === 'any') setSelectedEmployee({ id: 'any', name: 'Любой мастер' });
                         else {
                             const master = initialEmployees.find((e: any) => String(e.id) === String(slot.employee_id));
@@ -219,6 +211,15 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
                 }
             }
             if (slot) setHistory(prev => [...prev, getNextStep(currentView as Step)]);
+        },
+
+        handleSelectBranch: (branchId: number) => {
+            onBranchSelect(branchId);
+            // Reset branch-specific state
+            setSelectedEmployee(null);
+            setSelectedServices([]);
+            setSelectedSlot(null);
+            setHistory(['home']);
         }
     };
 }
