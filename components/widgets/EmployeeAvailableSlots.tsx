@@ -12,13 +12,26 @@ interface Props {
     onSlotSelect: (slot: any) => void;
     selectedDate: string;
     onDateChange: (date: string) => void;
-    selectedSlotTime?: string; // Пропс для подсветки выбранного времени
+    selectedSlotTime?: string;
     duration?: number;
     step?: number;
     timezone?: string;
+    accentColor?: string;
+    accentTextColor?: string;
 }
 
-export function EmployeeAvailableSlots({ employeeIds, onSlotSelect, selectedDate, onDateChange, selectedSlotTime, duration = 30, step = 30, timezone = 'Europe/Minsk' }: Props) {
+export function EmployeeAvailableSlots({ 
+    employeeIds, 
+    onSlotSelect, 
+    selectedDate, 
+    onDateChange, 
+    selectedSlotTime, 
+    duration = 30, 
+    step = 30, 
+    timezone = 'Europe/Minsk',
+    accentColor = '#000000',
+    accentTextColor = '#ffffff'
+}: Props) {
 
     // ФИКС ПЕРЕКЛЮЧЕНИЯ КАЛЕНДАРЯ: Безопасное получение локальной даты с учетом часового пояса
     useEffect(() => {
@@ -70,7 +83,8 @@ export function EmployeeAvailableSlots({ employeeIds, onSlotSelect, selectedDate
                     const isSelected = selectedDate === dateStr;
                     return (
                         <button key={dateStr} disabled={!isAvailable} onClick={() => onDateChange(dateStr)}
-                                className={cn("flex flex-col items-center justify-center min-w-[64px] h-20 rounded-2xl border-2 transition-all", isSelected ? "bg-neutral-900 border-neutral-900 text-white shadow-lg scale-105 z-10" : "bg-white border-neutral-100 text-neutral-400 hover:border-neutral-200", !isAvailable && "opacity-20")}>
+                                className={cn("flex flex-col items-center justify-center min-w-[64px] h-20 rounded-2xl border-2 transition-all", isSelected ? "shadow-lg scale-105 z-10" : "bg-white border-neutral-100 text-neutral-400 hover:border-neutral-200", !isAvailable && "opacity-20")}
+                                style={isSelected ? { backgroundColor: accentColor, color: accentTextColor, borderColor: accentColor } : {}}>
                             <span className="text-[10px] font-black uppercase mb-1">{d.setLocale('ru').toFormat('ccc')}</span>
                             <span className="text-xl font-bold">{d.toFormat('d')}</span>
                         </button>
@@ -81,15 +95,13 @@ export function EmployeeAvailableSlots({ employeeIds, onSlotSelect, selectedDate
                 {isLoadingSlots ? <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-neutral-200" /></div> : uniqueSlots.length > 0 ? (
                     <div className="grid grid-cols-4 gap-2">
                         {uniqueSlots.map((slot: any) => {
-                            // ЖЕЛЕЗОБЕТОННЫЙ ФИКС ПОДСВЕТКИ:
-                            // Конвертируем обе строки в абсолютные миллисекунды.
-                            // Теперь 2026-03-09T15:45:00Z === 2026-03-09T18:45:00+03:00
                             const isSelected = !!selectedSlotTime &&
                                 DateTime.fromISO(selectedSlotTime).toMillis() === DateTime.fromISO(slot.start_time).toMillis();
 
                             return (
                                 <button key={slot.start_time} onClick={() => onSlotSelect(slot)}
-                                        className={cn("h-12 flex items-center justify-center rounded-xl font-black text-sm active:scale-95 shadow-sm transition-colors", isSelected ? "bg-black text-white" : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200")}>
+                                        className={cn("h-12 flex items-center justify-center rounded-xl font-black text-sm active:scale-95 shadow-sm transition-colors", isSelected ? "" : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200")}
+                                        style={isSelected ? { backgroundColor: accentColor, color: accentTextColor } : {}}>
                                     {DateTime.fromISO(slot.start_time).setZone(timezone).toFormat('HH:mm')}
                                 </button>
                             );

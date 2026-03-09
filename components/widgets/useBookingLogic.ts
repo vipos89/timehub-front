@@ -138,7 +138,7 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
     }, [initialEmployees, selectedServices, daySlots, futureSlots, checkEmployeeSkills, calculateTotalDuration]);
 
     return {
-        currentView, selectedEmployee, selectedServices, selectedSlot, viewedDate,
+        history, currentView, selectedEmployee, selectedServices, selectedSlot, viewedDate,
         employeesWithStatus, isBookingReady,
         availableServices: initialServices.map((svc: any) => {
             let canDo = true;
@@ -175,7 +175,6 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
             if (emp && !emp.canAcceptBooking) return;
             if (emp.id === 'any' && selectedSlot && selectedServices.length > 0) {
                 resolveAnyMaster(selectedSlot, selectedServices);
-                setHistory(prev => [...prev, getNextStep(currentView as Step)]);
                 return;
             }
             setSelectedEmployee(emp);
@@ -186,7 +185,6 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
                 if (newMasterSlot && newMasterSlot.max_duration >= calculateTotalDuration(emp.id)) setSelectedSlot(newMasterSlot);
                 else setSelectedSlot(null);
             }
-            setHistory(prev => [...prev, getNextStep(currentView as Step)]);
         },
 
         handleSelectSlot: (slot: any, forceEmployeeId?: string | number) => {
@@ -210,7 +208,6 @@ export function useBookingLogic({ initialEmployees = [], initialServices = [], s
                     if (!checkEmployeeSkills(selectedEmployee.id)) resolveAnyMaster(slot, selectedServices);
                 }
             }
-            if (slot) setHistory(prev => [...prev, getNextStep(currentView as Step)]);
         },
 
         handleSelectBranch: (branchId: number) => {

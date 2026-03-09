@@ -26,6 +26,17 @@ const AVAILABLE_CHANNELS = [
     { id: 'vk', label: 'ВКонтакте', icon: UserSquare2, active: true },
 ];
 
+const DEFAULT_TEMPLATES: Record<string, string> = {
+    booking_created: "✅ Здравствуйте, {{client_name}}! Вы успешно записались в {{branch_name}} на {{date}} в {{time}}. Услуги: {{services}}. Ждем вас!",
+    booking_confirmed: "✅ Здравствуйте, {{client_name}}! Ваша запись в {{branch_name}} на {{date}} в {{time}} подтверждена. Услуги: {{services}}.",
+    booking_updated: "🔄 Здравствуйте, {{client_name}}! Ваша запись в {{branch_name}} была изменена. Новое время: {{date}} в {{time}}.",
+    booking_reminder_24h: "⏰ Напоминаем о вашей записи завтра ({{date}} в {{time}}) в {{branch_name}}. До встречи!",
+    booking_reminder_1h: "🚀 Ждем вас через час ({{time}}) в {{branch_name}}! Ваш мастер: {{employee_name}}.",
+    booking_cancelled: "❌ Здравствуйте, {{client_name}}! Ваша запись в {{branch_name}} на {{date}} в {{time}} отменена.",
+    booking_no_show: "😔 Здравствуйте, {{client_name}}! Мы заметили, что вы не смогли прийти на запись в {{branch_name}}. Будем рады видеть вас в другой раз!",
+    feedback_request: "🌟 Здравствуйте, {{client_name}}! Как вам визит к мастеру {{employee_name}}? Поделитесь вашим отзывом: {{review_url}}",
+};
+
 export function NotificationSettings({ companyId, branches }: { companyId: number, branches: any[] }) {
     const queryClient = useQueryClient();
     const { selectedBranchID, setSelectedBranchID } = useBranch();
@@ -107,12 +118,22 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
         if (existingRule) {
             setEditingRule({ ...existingRule });
         } else {
+            const label = notificationTypes.find(t => t.id === typeId)?.label || typeId;
             setEditingRule({
                 branch_id: parseInt(localBranchId),
                 type: typeId,
                 is_active: true,
                 steps: [
-                    { channel: activeChannels[0] || 'sms', condition: 'always', delay_minutes: 0, template_id: 1 }
+                    { 
+                        channel: activeChannels[0] || 'telegram', 
+                        condition: 'always', 
+                        delay_minutes: 0, 
+                        template: {
+                            branch_id: parseInt(localBranchId),
+                            name: `${label} - Step 1`,
+                            body: DEFAULT_TEMPLATES[typeId] || DEFAULT_TEMPLATES.booking_created
+                        }
+                    }
                 ]
             });
         }
@@ -120,11 +141,24 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
 
     const addStep = () => {
         if (!editingRule) return;
+        const typeId = editingRule.type;
+        const label = notificationTypes.find(t => t.id === typeId)?.label || typeId;
+        const nextIdx = (editingRule.steps?.length || 0) + 1;
+        
         setEditingRule({
             ...editingRule,
             steps: [
                 ...(editingRule.steps || []),
-                { channel: activeChannels[0] || 'sms', condition: 'on_failure', delay_minutes: 0, template_id: 1 }
+                { 
+                    channel: activeChannels[0] || 'telegram', 
+                    condition: 'on_failure', 
+                    delay_minutes: 0, 
+                    template: {
+                        branch_id: parseInt(localBranchId),
+                        name: `${label} - Step ${nextIdx}`,
+                        body: DEFAULT_TEMPLATES[typeId] || DEFAULT_TEMPLATES.booking_created
+                    }
+                }
             ]
         });
     };
@@ -333,8 +367,11 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                             <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Задержка (мин)</label>
                                             <Input 
                                                 type="number" 
-                                                value={step.delay_minutes} 
-                                                onChange={(e) => updateStep(idx, 'delay_minutes', parseInt(e.target.value))}
+                                                value={isNaN(step.delay_minutes) ? 0 : step.delay_minutes} 
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    updateStep(idx, 'delay_minutes', isNaN(val) ? 0 : val);
+                                                }}
                                                 className="h-8 w-16 text-[10px] font-bold rounded-lg border-neutral-200"
                                             />
                                         </div>

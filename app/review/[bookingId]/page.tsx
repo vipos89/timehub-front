@@ -11,6 +11,7 @@ import { ru } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -55,8 +56,10 @@ export default function ReviewPage() {
             company_id: booking.company_id,
             branch_id: booking.branch_id,
             customer_id: booking.client_id,
+            employee_id: booking.employee_id,
             rating: rating,
             comment: comment,
+            is_public: true
         });
     };
 

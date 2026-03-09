@@ -75,7 +75,9 @@ export function WidgetBuilder({ isOpen, onClose, onSave, initialData, branches, 
             glassOpacity: 80,
             glassBlur: 12,
             bgPattern: 'none' as 'none' | 'dots' | 'grid' | 'gradient',
-            accentTextColor: '#000000'
+            accentTextColor: '#000000',
+            headerType: 'color' as 'color' | 'gradient' | 'image',
+            headerImage: ''
         }
     });
 
@@ -317,6 +319,63 @@ export function WidgetBuilder({ isOpen, onClose, onSave, initialData, branches, 
                                                     <SelectItem value="gradient">Мягкий градиент</SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                        </div>
+
+                                        <div className="space-y-4 pt-4 border-t border-neutral-100">
+                                            <div className="flex items-center gap-2 mb-1"><div className="h-5 w-5 bg-neutral-100 rounded-md flex items-center justify-center text-neutral-500"><Layout className="h-3 w-3" /></div><h3 className="font-bold text-xs text-neutral-500 uppercase tracking-widest">Шапка виджета</h3></div>
+                                            <div className="grid gap-2">
+                                                <Label className="text-xs font-bold text-neutral-700 ml-1">Тип фона шапки</Label>
+                                                <Select value={formData.settings.headerType || 'color'} onValueChange={(v) => handleUpdateSettings('headerType', v)}>
+                                                    <SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white"><SelectValue /></SelectTrigger>
+                                                    <SelectContent className="z-[110]">
+                                                        <SelectItem value="color">Заливка цветом</SelectItem>
+                                                        <SelectItem value="gradient">Градиент</SelectItem>
+                                                        <SelectItem value="image">Картинка</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            {formData.settings.headerType === 'color' && (
+                                                <div className="grid gap-2 animate-in fade-in slide-in-from-top-1">
+                                                    <Label className="text-xs font-bold text-neutral-700 ml-1">Цвет шапки</Label>
+                                                    <div className="flex gap-2">
+                                                        <div className="relative h-11 w-11 shrink-0">
+                                                            <Input type="color" value={formData.settings.headerSecondaryColor || '#F5FF82'} onChange={(e) => handleUpdateSettings('headerSecondaryColor', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+                                                            <div className="w-full h-full rounded-xl border border-neutral-200 shadow-sm" style={{ backgroundColor: formData.settings.headerSecondaryColor || '#F5FF82' }} />
+                                                        </div>
+                                                        <Input value={formData.settings.headerSecondaryColor || '#F5FF82'} onChange={(e) => handleUpdateSettings('headerSecondaryColor', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white font-mono text-xs"/>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {formData.settings.headerType === 'gradient' && (
+                                                <div className="space-y-4 animate-in fade-in slide-in-from-top-1">
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs font-bold text-neutral-700 ml-1">Первый цвет</Label>
+                                                        <div className="flex gap-2">
+                                                            <div className="relative h-11 w-11 shrink-0">
+                                                                <Input type="color" value={formData.settings.accentColor} onChange={(e) => handleUpdateSettings('accentColor', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+                                                                <div className="w-full h-full rounded-xl border border-neutral-200 shadow-sm" style={{ backgroundColor: formData.settings.accentColor }} />
+                                                            </div>
+                                                            <Input value={formData.settings.accentColor} onChange={(e) => handleUpdateSettings('accentColor', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white font-mono text-xs"/>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs font-bold text-neutral-700 ml-1">Второй цвет</Label>
+                                                        <div className="flex gap-2">
+                                                            <div className="relative h-11 w-11 shrink-0">
+                                                                <Input type="color" value={formData.settings.headerSecondaryColor || '#F5FF82'} onChange={(e) => handleUpdateSettings('headerSecondaryColor', e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"/>
+                                                                <div className="w-full h-full rounded-xl border border-neutral-200 shadow-sm" style={{ backgroundColor: formData.settings.headerSecondaryColor || '#F5FF82' }} />
+                                                            </div>
+                                                            <Input value={formData.settings.headerSecondaryColor || '#F5FF82'} onChange={(e) => handleUpdateSettings('headerSecondaryColor', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white font-mono text-xs"/>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {formData.settings.headerType === 'image' && (
+                                                <div className="grid gap-2 animate-in fade-in slide-in-from-top-1">
+                                                    <Label className="text-xs font-bold text-neutral-700 ml-1">URL картинки</Label>
+                                                    <Input value={formData.settings.headerImage || ''} onChange={(e) => handleUpdateSettings('headerImage', e.target.value)} className="h-11 rounded-xl border-neutral-200 bg-white" placeholder="https://example.com/banner.jpg" />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </section>

@@ -42,18 +42,27 @@
         }
     };
 
-    const injectStyles = (accentColor, textColor, position) => {
+    const injectStyles = (accentColor, textColor, position, fontFamily) => {
         let positionStyles = 'bottom: 24px; right: 24px;';
         if (position === 'bottom-left') positionStyles = 'bottom: 24px; left: 24px;';
         else if (position === 'top-right') positionStyles = 'top: 24px; right: 24px;';
         else if (position === 'top-left') positionStyles = 'top: 24px; left: 24px;';
 
+        const fontPairs = {
+            'Inter': "'Inter', sans-serif",
+            'Montserrat': "'Montserrat', sans-serif",
+            'Outfit': "'Outfit', sans-serif",
+            'Playfair Display': "'Playfair Display', serif"
+        };
+        const selectedFont = fontPairs[fontFamily] || fontPairs['Inter'];
+
         const styles = `
-            .timehub-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 999999; opacity: 0; transition: opacity 0.3s ease; backdrop-filter: blur(4px); }
-            .timehub-overlay.active { opacity: 1; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Montserrat:wght@400;700;900&family=Outfit:wght@400;700;900&family=Playfair+Display:wght@400;700;900&display=swap');
+            .timehub-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 999999; opacity: 0; transition: opacity 0.3s ease; backdrop-filter: blur(4px); pointer-events: none; }
+            .timehub-overlay.active { opacity: 1; pointer-events: auto; }
             .timehub-modal { position: relative; width: 100%; max-width: 450px; height: 90vh; max-height: 800px; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2); transform: translateY(20px); transition: transform 0.3s ease; }
             .timehub-overlay.active .timehub-modal { transform: translateY(0); }
-            .timehub-close { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; background: rgba(0, 0, 0, 0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 20px; color: #666; }
+            .timehub-close { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; background: rgba(0, 0, 0, 0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 20px; color: #666; z-index: 100; }
             .timehub-iframe { width: 100%; height: 100%; border: none; }
             .timehub-floating-btn { 
                 position: fixed; ${positionStyles}
@@ -63,7 +72,7 @@
                 z-index: 999998; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
                 display: flex; align-items: center; justify-content: center; 
                 text-align: center; padding: 10px; line-height: 1.2;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                font-family: ${selectedFont};
                 font-size: 14px; font-weight: bold; word-wrap: break-word;
             }
             .timehub-floating-btn:hover { transform: translateY(-4px) scale(1.05); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25); }
@@ -81,6 +90,15 @@
             @keyframes th-glow { 0%, 100% { box-shadow: 0 8px 24px ${accentColor}66; } 50% { box-shadow: 0 8px 40px ${accentColor}; } }
             .th-glow { animation: th-glow 2s ease-in-out infinite; }
 
+            @keyframes th-bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-20px);} 60% {transform: translateY(-10px);} }
+            .th-bounce { animation: th-bounce 2s infinite; }
+
+            @keyframes th-swing { 20% { transform: rotate(15deg); } 40% { transform: rotate(-10deg); } 60% { transform: rotate(5deg); } 80% { transform: rotate(-5deg); } 100% { transform: rotate(0deg); } }
+            .timehub-floating-btn.th-swing { animation: th-swing 2s infinite; transform-origin: top center; }
+
+            @keyframes th-pop { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+            .th-pop { animation: th-pop 1s infinite; }
+
             @media (max-width: 480px) { .timehub-modal { width: 100%; height: 100%; max-height: 100%; border-radius: 0; } }
         `;
         const styleTag = document.createElement('style');
@@ -93,12 +111,13 @@
         .then(widget => {
             const settings = typeof widget.settings === 'string' ? JSON.parse(widget.settings) : widget.settings || {};
             const accent = settings.accentColor || '#F5FF82';
-            const textColor = settings.buttonTextColor || '#000000';
+            const textColor = settings.accentTextColor || settings.buttonTextColor || '#000000';
             const btnText = settings.buttonText || 'Записаться онлайн';
             const animation = settings.animationType || 'th-pulse';
             const position = settings.buttonPosition || 'bottom-right';
+            const fontFamily = settings.fontFamily || 'Inter';
             
-            injectStyles(accent, textColor, position);
+            injectStyles(accent, textColor, position, fontFamily);
 
             if (settings.floatingButton !== false) {
                 const btn = document.createElement('button');
