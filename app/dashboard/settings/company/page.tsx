@@ -19,7 +19,7 @@ export default function CompanyProfilePage() {
     const queryClient = useQueryClient();
     const [companyForm, setCompanyForm] = useState<any>({
         name: '', description: '', logo_url: '', website: '', tax_id: '', legal_name: '', legal_address: '',
-        contact_phones: [], contact_emails: [], social_links: { instagram: '', telegram: '', vk: '', whatsapp: '' }
+        contact_phones: [], contact_emails: [], social_links: { instagram: '', telegram: '', vk: '' }
     });
 
     const { data: company, isLoading } = useQuery({ 
@@ -135,7 +135,7 @@ export default function CompanyProfilePage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-8 pt-0 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {['instagram', 'telegram', 'vk', 'whatsapp'].map((s) => (
+                        {['instagram', 'telegram', 'vk'].map((s) => (
                             <div key={s} className="grid gap-2">
                                 <Label className="text-[10px] font-black uppercase opacity-40 ml-1">{s}</Label>
                                 <Input value={companyForm.social_links[s]} onChange={(e) => setCompanyForm({ ...companyForm, social_links: { ...companyForm.social_links, [s]: e.target.value } })} className="h-12 rounded-xl bg-neutral-50 border-none font-bold" placeholder="@username" />

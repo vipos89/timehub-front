@@ -41,6 +41,15 @@ export default function DashboardPage() {
         enabled: !!selectedBranchID
     });
 
+    const { data: marketingStats } = useQuery({
+        queryKey: ['marketing-stats', selectedBranchID, period.days],
+        queryFn: async () => {
+            const resp = await api.get(`/reports/marketing?branch_id=${selectedBranchID}&from=${from}&to=${to}`);
+            return resp.data;
+        },
+        enabled: !!selectedBranchID
+    });
+
     if (!selectedBranchID) {
         return (
             <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
@@ -337,14 +346,65 @@ export default function DashboardPage() {
                 </Card>
             </div>
 
+            {/* Marketing Section */}
+            {marketingStats?.sources?.length > 0 && (
+                <div className="space-y-6">
+                    <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-neutral-900 flex items-center justify-center text-[#FF7A00]">
+                            <Users className="h-4 w-4" />
+                        </div>
+                        <h2 className="text-xl font-black uppercase tracking-tight italic">Эффективность каналов</h2>
+                    </div>
+
+                    <Card className="rounded-[2.5rem] border-none shadow-sm bg-white overflow-hidden">
+                        <CardContent className="p-0">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-neutral-50/50">
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-neutral-400">Источник</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-neutral-400 text-center">Визиты</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-neutral-400 text-center">Выручка</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-neutral-400 text-right">Ср. чек</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {marketingStats.sources.map((s: any, idx: number) => (
+                                        <tr key={s.source} className={cn("border-b border-neutral-50 last:border-none hover:bg-neutral-50/30 transition-colors", idx === 0 && "bg-emerald-50/10")}>
+                                            <td className="px-8 py-6">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-8 w-8 rounded-xl bg-neutral-100 flex items-center justify-center font-black text-[10px] uppercase">
+                                                        {s.source[0]}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-sm uppercase italic">{s.source}</p>
+                                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{s.campaigns?.length || 0} кампаний</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-6 text-center font-bold text-sm">{s.visits}</td>
+                                            <td className="px-8 py-6 text-center">
+                                                <span className="font-black text-sm">{s.revenue?.toLocaleString()} BYN</span>
+                                            </td>
+                                            <td className="px-8 py-6 text-right">
+                                                <span className="font-bold text-neutral-500 text-sm">{Math.round(s.avg_check || 0).toLocaleString()} BYN</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
             {/* Tips Section */}
             <div className="grid gap-8">
-                <div className="bg-[#F5FF82] rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between border border-[#e4ee6b] shadow-xl shadow-[#F5FF82]/20 relative overflow-hidden">
+                <div className="bg-[#FF7A00] rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between border border-[#e4ee6b] shadow-xl shadow-[#FF7A00]/20 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10">
                         <Star className="h-40 w-40 text-black fill-black" />
                     </div>
                     <div className="space-y-4 relative z-10">
-                        <Badge className="bg-black text-[#F5FF82] hover:bg-black font-black uppercase tracking-widest text-[9px] px-3 py-1 rounded-lg">Совет дня</Badge>
+                        <Badge className="bg-black text-[#FF7A00] hover:bg-black font-black uppercase tracking-widest text-[9px] px-3 py-1 rounded-lg">Совет дня</Badge>
                         <h3 className="text-2xl font-black text-neutral-900 uppercase italic tracking-tight leading-tight">Увеличьте возвращаемость<br />на 15% за месяц</h3>
                         <p className="text-neutral-800/70 text-sm font-bold leading-relaxed max-w-sm italic">
                             Настройте автоматическое напоминание клиентам, которые не были у вас более 30 дней в разделе "Уведомления".

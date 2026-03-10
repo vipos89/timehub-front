@@ -170,8 +170,8 @@ export default function NotificationsPage() {
                             </CardContent>
                         </Card>
 
-                        {/* WhatsApp Config */}
-                        <Card className="rounded-[2rem] border-neutral-100 shadow-sm overflow-hidden bg-white flex flex-col">
+                        {/* WhatsApp Config - Disabled for now */}
+                        {/* <Card className="rounded-[2rem] border-neutral-100 shadow-sm overflow-hidden bg-white flex flex-col">
                             <CardHeader className="bg-emerald-600 text-white p-8 flex flex-row items-center justify-between">
                                 <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase italic">
                                     <Smartphone className="h-5 w-5 text-emerald-100" /> WhatsApp Business
@@ -206,7 +206,7 @@ export default function NotificationsPage() {
                                     </div>
                                 </div>
                             </CardContent>
-                        </Card>
+                        </Card> */}
 
                         {/* Email Config */}
                         <Card className="rounded-[2rem] border-neutral-100 shadow-sm overflow-hidden bg-white flex flex-col">

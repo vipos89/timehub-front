@@ -9,8 +9,11 @@ import {
     LayoutDashboard,
     Settings,
     LogOut,
-    Scissors,
-    AppWindow,
+    BarChart3,
+    ChevronRight,
+    PieChart,
+    MousePointerClick,
+    TrendingUp
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -29,15 +32,18 @@ import {
     SidebarGroup,
     SidebarGroupLabel,
     SidebarGroupContent,
+    SidebarMenuSub,
+    SidebarMenuSubItem,
+    SidebarMenuSubButton,
 } from '@/components/ui/sidebar';
+import { 
+    Collapsible, 
+    CollapsibleContent, 
+    CollapsibleTrigger 
+} from '@/components/ui/collapsible';
 import { Label } from '@/components/ui/label';
 
 const navItems = [
-    {
-        title: 'Обзор',
-        url: '/dashboard',
-        icon: LayoutDashboard,
-    },
     {
         title: 'Записи',
         url: '/dashboard/appointments',
@@ -53,22 +59,53 @@ const navItems = [
         url: '/dashboard/schedule',
         icon: Calendar,
     },
-    {
-        title: 'Настройки',
-        url: '/dashboard/settings',
-        icon: Settings,
-    },
 ];
+
+const analyticsItems = {
+    title: 'Аналитика',
+    icon: BarChart3,
+    items: [
+        {
+            title: 'Обзор',
+            url: '/dashboard',
+            icon: LayoutDashboard,
+        },
+        {
+            title: 'Персонал',
+            url: '/dashboard/staff/reports',
+            icon: Users,
+        },
+        {
+            title: 'Маркетинг',
+            url: '/dashboard/marketing', // Potential future page
+            icon: MousePointerClick,
+        },
+        {
+            title: 'Retention',
+            url: '/dashboard/reports/retention',
+            icon: TrendingUp,
+        }
+    ]
+};
 
 export function AppSidebar() {
     const router = useRouter();
     const pathname = usePathname();
     const { selectedBranchID, setSelectedBranchID, branches, isLoading } = useBranch();
+    const [isMounted, setIsMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     const handleLogout = () => {
         Cookies.remove('token');
         router.push('/login');
     };
+
+    if (!isMounted) {
+        return null; // Or a skeleton placeholder
+    }
 
     return (
         <Sidebar variant="sidebar" collapsible="icon">
@@ -104,6 +141,7 @@ export function AppSidebar() {
                     <SidebarGroupLabel className="px-6 text-neutral-400 font-semibold uppercase text-[10px] tracking-wider mb-2">Навигация</SidebarGroupLabel>
                     <SidebarGroupContent>
                         <SidebarMenu className="px-3 gap-1">
+                            {/* Standard Items */}
                             {navItems.map((item) => (
                                 <SidebarMenuItem key={item.title}>
                                     <SidebarMenuButton
@@ -121,6 +159,49 @@ export function AppSidebar() {
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
                             ))}
+
+                            {/* Analytics Collapsible Group */}
+                            <Collapsible asChild className="group/collapsible">
+                                <SidebarMenuItem>
+                                    <CollapsibleTrigger asChild>
+                                        <SidebarMenuButton tooltip={analyticsItems.title} className="h-10 px-3 rounded-md hover:bg-neutral-100 transition-colors">
+                                            <analyticsItems.icon className="h-5 w-5 text-neutral-500" />
+                                            <span className="text-sm font-medium text-neutral-700 group-data-[collapsible=icon]:hidden">{analyticsItems.title}</span>
+                                            <ChevronRight className="ml-auto h-4 w-4 text-neutral-400 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
+                                        </SidebarMenuButton>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent>
+                                        <SidebarMenuSub>
+                                            {analyticsItems.items.map((subItem) => (
+                                                <SidebarMenuSubItem key={subItem.title}>
+                                                    <SidebarMenuSubButton asChild isActive={pathname === subItem.url}>
+                                                        <Link href={subItem.url} className="flex items-center gap-3">
+                                                            <span className="text-xs font-medium">{subItem.title}</span>
+                                                        </Link>
+                                                    </SidebarMenuSubButton>
+                                                </SidebarMenuSubItem>
+                                            ))}
+                                        </SidebarMenuSub>
+                                    </CollapsibleContent>
+                                </SidebarMenuItem>
+                            </Collapsible>
+
+                            {/* Settings Item */}
+                            <SidebarMenuItem>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={pathname === '/dashboard/settings'}
+                                    tooltip="Настройки"
+                                    className="h-10 px-3 rounded-md hover:bg-neutral-100 transition-colors"
+                                >
+                                    <Link href="/dashboard/settings" className="flex items-center gap-3 w-full">
+                                        <Settings className="h-5 w-5 text-neutral-500 group-data-[active=true]:text-neutral-900" />
+                                        <span className="text-sm font-medium text-neutral-700 group-data-[active=true]:text-neutral-900 group-data-[collapsible=icon]:hidden">
+                                            Настройки
+                                        </span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
                         </SidebarMenu>
                     </SidebarGroupContent>
                 </SidebarGroup>

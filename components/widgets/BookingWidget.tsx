@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { X, ChevronRight, User, Scissors, Calendar, ArrowLeft, Check, CheckCircle2, Plus, Users, MapPin, Clock, Building2, Loader2, Globe, Instagram, Send, Phone as PhoneIcon, MessageCircle, Star, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -55,6 +55,23 @@ export function BookingWidget({
     const [reviewRating, setReviewRating] = useState(5);
     const [showReviewForm, setShowReviewForm] = useState(false);
 
+    // Marketing Data Capture
+    const [marketingData, setMarketingData] = useState<any>({});
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const data = {
+                utm_source: params.get('utm_source') || '',
+                utm_medium: params.get('utm_medium') || '',
+                utm_campaign: params.get('utm_campaign') || '',
+                utm_content: params.get('utm_content') || '',
+                utm_term: params.get('utm_term') || '',
+                referrer: document.referrer || ''
+            };
+            setMarketingData(data);
+        }
+    }, []);
+
     const bookingMutation = useMutation({
         mutationFn: async () => {
             const customerRes = await api.post('/customers', { 
@@ -75,6 +92,7 @@ export function BookingWidget({
                 total_price: state.totalPrice,
                 booking_source: 'widget',
                 widget_code: (typeof window !== 'undefined' ? window.location.pathname.split('/').pop() : ''),
+                ...marketingData, // Include UTM tags and referrer
                 services: state.selectedServices.map(s => ({ 
                     service_id: s.id, 
                     price: state.getSvcPrice(s, empId), 
@@ -111,15 +129,42 @@ export function BookingWidget({
         }
     });
 
-    const { data: employeeReviews = [] } = useQuery({
+    const { data: reviewsStatsData } = useQuery({
+        queryKey: ['branchReviewsStats', branch?.id],
+        queryFn: async () => {
+            if (!branch?.id) return null;
+            const res = await api.get(`/reviews/stats?branch_id=${branch.id}`);
+            return res.data;
+        },
+        enabled: !!branch?.id
+    });
+
+    const reviewsStats = useMemo(() => {
+        if (!reviewsStatsData) {
+            return {
+                avgRating: 5.0,
+                totalCount: 0,
+                employeeStats: {} as Record<number, { avg_rating: number, total_count: number }>
+            };
+        }
+        return {
+            avgRating: reviewsStatsData.avg_rating || 5.0,
+            totalCount: reviewsStatsData.total_count || 0,
+            employeeStats: reviewsStatsData.employee_stats || {}
+        };
+    }, [reviewsStatsData]);
+
+    const { data: employeeReviewsData } = useQuery({
         queryKey: ['reviews', infoEmployee?.id],
         queryFn: async () => {
-            if (!infoEmployee) return [];
-            const res = await api.get(`/reviews?branch_id=${branch.id}&employee_id=${infoEmployee.id}`);
+            if (!infoEmployee) return { items: [], total: 0 };
+            const res = await api.get(`/reviews?branch_id=${branch.id}&employee_id=${infoEmployee.id}&page_size=5`);
             return res.data;
         },
         enabled: !!infoEmployee
     });
+
+    const employeeReviews = useMemo(() => employeeReviewsData?.items || [], [employeeReviewsData]);
 
     const isNextDisabled = () => {
         if (bookingMutation.isPending || isLoadingData) return true;
@@ -408,6 +453,20 @@ export function BookingWidget({
                                             <ChevronRight className="h-6 w-6 text-neutral-400 mt-1 group-hover:text-black transition-colors" />
                                         )}
                                     </div>
+                                    
+                                    {branch && (
+                                        <div className={cn("flex items-center gap-2 mb-1", config.logoAlignment === 'center' && "justify-center", config.logoAlignment === 'right' && "justify-end")}>
+                                            <div className="flex items-center">
+                                                {[1,2,3,4,5].map(star => (
+                                                    <Star key={star} className={cn("h-3 w-3 fill-[#FFC107] text-[#FFC107]", star > reviewsStats.avgRating && "fill-neutral-200 text-neutral-200")} />
+                                                ))}
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                                {reviewsStats.avgRating.toFixed(1)} • {reviewsStats.totalCount} {strings.reviews}
+                                            </span>
+                                        </div>
+                                    )}
+
                                     <div className={cn("text-sm font-medium leading-relaxed opacity-60 flex items-center gap-2", 
                                         themeClasses.textMuted,
                                         config.logoAlignment === 'center' && "justify-center",
@@ -517,13 +576,11 @@ export function BookingWidget({
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="flex items-center">
                                                                         {[1,2,3,4,5].map(star => (
-                                                                            <Star key={star} className={cn("h-4 w-4 fill-[#FFC107] text-[#FFC107]", star > (emp.rating || 5) && "fill-neutral-200 text-neutral-200")} />
+                                                                            <Star key={star} className={cn("h-4 w-4 fill-[#FFC107] text-[#FFC107]", star > (reviewsStats.employeeStats[emp.id]?.avg_rating || emp.rating || 5) && "fill-neutral-200 text-neutral-200")} />
                                                                         ))}
                                                                     </div>
-                                                                    <span className="text-[10px] font-bold text-neutral-400">{(emp.reviews_count || (emp.id === 'any' ? 0 : (typeof emp.id === 'number' ? (emp.id * 13) % 500 : emp.id.length * 27 % 500) + 50))} {strings.reviews}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                                    <span className="text-[10px] font-bold text-neutral-400">{(reviewsStats.employeeStats[emp.id]?.total_count || emp.reviews_count || 0)} {strings.reviews}</span>
+                                                                </div>                                                            )}                                                        </div>
                                                     </div>
                                                     <div className="flex items-center gap-2 pr-2">
                                                         {emp.id !== 'any' && (
@@ -766,11 +823,10 @@ export function BookingWidget({
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     {[1,2,3,4,5].map(star => (
-                                        <Star key={star} className={cn("h-5 w-5 fill-[#FFC107] text-[#FFC107]", star > (infoEmployee.rating || 5) && "fill-neutral-200 text-neutral-200")} />
+                                        <Star key={star} className={cn("h-5 w-5 fill-[#FFC107] text-[#FFC107]", star > (reviewsStats.employeeStats[infoEmployee.id]?.avg_rating || infoEmployee.rating || 5) && "fill-neutral-200 text-neutral-200")} />
                                     ))}
-                                    <span className="text-sm font-black ml-1">{(infoEmployee.rating || 5.0).toFixed(1)}</span>
-                                </div>
-                            </div>
+                                    <span className="text-sm font-black ml-1">{(reviewsStats.employeeStats[infoEmployee.id]?.avg_rating || infoEmployee.rating || 5.0).toFixed(1)}</span>
+                                </div>                            </div>
 
                             <div className="space-y-3">
                                 <h5 className={cn("text-[10px] font-black uppercase tracking-widest opacity-40", themeClasses.textMain)}>Биография и опыт</h5>
@@ -840,9 +896,8 @@ export function BookingWidget({
                                         employeeReviews.map((rev: any, i: number) => (
                                             <div key={rev.id || i} className={cn("p-4 rounded-[24px] border", theme === 'dark' ? "bg-neutral-800 border-neutral-700" : "bg-neutral-50 border-neutral-100")}>
                                                 <div className="flex items-center justify-between mb-2">
-                                                    <span className={cn("font-black text-sm", themeClasses.textMain)}>{rev.client_name || 'Клиент'}</span>
-                                                    <div className="flex items-center gap-0.5">
-                                                        {[1,2,3,4,5].map(s => <Star key={s} className={cn("h-3 w-3 fill-[#FFC107] text-[#FFC107]", s > rev.rating && "fill-neutral-300 text-neutral-300")} />)}
+                                                    <span className={cn("font-black text-sm", themeClasses.textMain)}>{rev.customer_name || 'Клиент'}</span>
+                                                    <div className="flex items-center gap-0.5">                                                        {[1,2,3,4,5].map(s => <Star key={s} className={cn("h-3 w-3 fill-[#FFC107] text-[#FFC107]", s > rev.rating && "fill-neutral-300 text-neutral-300")} />)}
                                                     </div>
                                                 </div>
                                                 <p className={cn("text-xs font-medium opacity-70 leading-relaxed", themeClasses.textMain)}>{rev.comment}</p>

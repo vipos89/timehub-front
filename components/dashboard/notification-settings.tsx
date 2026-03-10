@@ -21,7 +21,6 @@ import { Input } from '@/components/ui/input';
 const AVAILABLE_CHANNELS = [
     { id: 'telegram', label: 'Telegram', icon: Send, active: true },
     { id: 'sms', label: 'SMS', icon: MessageSquare, active: true },
-    { id: 'whatsapp', label: 'WhatsApp', icon: Smartphone, active: true },
     { id: 'email', label: 'Email', icon: AtSign, active: true },
     { id: 'vk', label: 'ВКонтакте', icon: UserSquare2, active: true },
 ];
@@ -35,6 +34,7 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
     booking_cancelled: "❌ Здравствуйте, {{client_name}}! Ваша запись в {{branch_name}} на {{date}} в {{time}} отменена.",
     booking_no_show: "😔 Здравствуйте, {{client_name}}! Мы заметили, что вы не смогли прийти на запись в {{branch_name}}. Будем рады видеть вас в другой раз!",
     feedback_request: "🌟 Здравствуйте, {{client_name}}! Как вам визит к мастеру {{employee_name}}? Поделитесь вашим отзывом: {{review_url}}",
+    client_reactivation: "👋 Здравствуйте, {{client_name}}! Мы давно не виделись в {{branch_name}}. Хотите записаться снова? Ссылка: {{appointment_url}}",
 };
 
 export function NotificationSettings({ companyId, branches }: { companyId: number, branches: any[] }) {
@@ -44,7 +44,7 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     const [localBranchId, setLocalBranchId] = useState<string>(selectedBranchID || branches[0]?.id?.toString() || '');
     const [editingRule, setEditingRule] = useState<any | null>(null);
     const [editingTemplateIdx, setEditingTemplateIdx] = useState<number | null>(null);
-    const [activeChannels, setActiveChannels] = useState<string[]>(['telegram', 'sms', 'whatsapp']); // Mock active channels
+    const [activeChannels, setActiveChannels] = useState<string[]>(['telegram', 'sms']); // Mock active channels
 
     const VARIABLES = [
         { name: '{{client_name}}', desc: 'Имя клиента' },
@@ -105,6 +105,7 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
         { id: 'booking_cancelled', label: 'Отмена записи', category: 'Оповещения' },
         { id: 'booking_no_show', label: 'Неявка клиента', category: 'Удержание' },
         { id: 'feedback_request', label: 'Запрос отзыва (после визита)', category: 'Лояльность' },
+        { id: 'client_reactivation', label: 'Автопилот: Возврат клиентов', category: 'Удержание' },
     ];
 
     if (!localBranchId) return <div className="p-12 text-center bg-white rounded-[2rem] border border-neutral-100 shadow-sm"><p className="text-neutral-500 font-bold uppercase text-xs tracking-widest">Сначала выберите или создайте филиал</p></div>;
@@ -277,7 +278,7 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                         <Button 
                                             variant="ghost" 
                                             onClick={() => handleEditRule(type.id)}
-                                            className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-neutral-50 text-neutral-600 hover:bg-neutral-900 hover:text-[#F5FF82] transition-all opacity-0 group-hover:opacity-100"
+                                            className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-neutral-50 text-neutral-600 hover:bg-neutral-900 hover:text-[#FF7A00] transition-all opacity-0 group-hover:opacity-100"
                                         >
                                             Настроить
                                         </Button>
@@ -364,13 +365,17 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                             {step.template?.body ? "Изменить шаблон" : "Создать шаблон"}
                                         </Button>
                                         <div className="flex items-center gap-2">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Задержка (мин)</label>
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-400">
+                                                {editingRule.type === 'client_reactivation' ? 'Через сколько дней' : 'Задержка (мин)'}
+                                            </label>
                                             <Input 
                                                 type="number" 
-                                                value={isNaN(step.delay_minutes) ? 0 : step.delay_minutes} 
+                                                value={editingRule.type === 'client_reactivation' ? Math.round(step.delay_minutes / 1440) : (isNaN(step.delay_minutes) ? 0 : step.delay_minutes)} 
                                                 onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    updateStep(idx, 'delay_minutes', isNaN(val) ? 0 : val);
+                                                    let val = parseInt(e.target.value);
+                                                    if (isNaN(val)) val = 0;
+                                                    const finalVal = editingRule.type === 'client_reactivation' ? val * 1440 : val;
+                                                    updateStep(idx, 'delay_minutes', finalVal);
                                                 }}
                                                 className="h-8 w-16 text-[10px] font-bold rounded-lg border-neutral-200"
                                             />

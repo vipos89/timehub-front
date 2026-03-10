@@ -35,6 +35,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useBranch } from '@/context/branch-context';
@@ -97,6 +98,7 @@ export function BookingEditor({
         totalPrice: 0,
         isGuest: false,
         clientID: null as number | null,
+        discount: 0,
     });
 
     const [searchService, setSearchService] = useState('');
@@ -105,6 +107,7 @@ export function BookingEditor({
     const [showClientDropdown, setShowClientDropdown] = useState(false);
     const [activeSearchField, setActiveSearchField] = useState<'name' | 'phone' | null>(null);
     const [warningType, setWarningType] = useState<'overbooking' | 'out_of_shift' | null>(null);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
     // Fetch customer profile & history when client is selected
     const { data: customerStats } = useQuery({
@@ -117,6 +120,12 @@ export function BookingEditor({
         queryKey: ['customerVisits', formData.clientID],
         queryFn: async () => (await api.get(`/customers/${formData.clientID}/visits`)).data,
         enabled: !!formData.clientID
+    });
+
+    const { data: historyLogs = [] } = useQuery({
+        queryKey: ['appointmentLogs', selectedAppointment?.id],
+        queryFn: async () => (await api.get(`/appointments/${selectedAppointment.id}/logs`)).data,
+        enabled: mode === 'edit' && !!selectedAppointment?.id
     });
 
     useEffect(() => {
@@ -162,7 +171,7 @@ export function BookingEditor({
                     clientName: '', clientPhone: '', clientEmail: '', comment: '', status: 'pending',
                     startTime: localTime.toFormat('HH:mm'),
                     endTime: localTime.plus({ minutes: 60 }).toFormat('HH:mm'),
-                    selectedServices: [], payments: [], totalPrice: 0, isGuest: false, clientID: null,
+                    selectedServices: [], payments: [], totalPrice: 0, isGuest: false, clientID: null, discount: 0,
                 });
                 setActiveSearchField(null);
             } else if (mode === 'edit' && selectedAppointment) {
@@ -182,6 +191,7 @@ export function BookingEditor({
                     payments: selectedAppointment.payments || [], totalPrice: selectedAppointment.total_price || 0,
                     isGuest: selectedAppointment.client_phone === 'ANONYMOUS' || selectedAppointment.client_phone === '' || selectedAppointment.client_phone === 'guest',
                     clientID: selectedAppointment.client_id || null,
+                    discount: selectedAppointment.discount || 0
                 });
                 setActiveSearchField(null);
             }
@@ -189,17 +199,20 @@ export function BookingEditor({
     }, [isOpen, mode, selectedSlot, selectedAppointment, allServices, timezone]);
 
     useEffect(() => {
-        const price = formData.selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
+        const rawPrice = formData.selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
+        const discountAmount = Math.round(rawPrice * (formData.discount / 100));
+        const finalPrice = rawPrice - discountAmount;
+        
         const duration = formData.selectedServices.reduce((acc, s) => acc + (s.duration_minutes || s.duration || s.service?.duration_minutes || s.service?.duration || 0), 0);
         setFormData(prev => {
-            const newState = { ...prev, totalPrice: price };
+            const newState = { ...prev, totalPrice: finalPrice };
             if (prev.startTime && duration > 0) {
                 const start = DateTime.fromFormat(prev.startTime, 'HH:mm', { zone: timezone });
                 newState.endTime = start.plus({ minutes: duration }).toFormat('HH:mm');
             }
             return newState;
         });
-    }, [formData.selectedServices, timezone]);
+    }, [formData.selectedServices, timezone, formData.discount]);
 
     useEffect(() => {
         const timer = setTimeout(async () => {
@@ -209,7 +222,9 @@ export function BookingEditor({
                 setIsSearchingClient(true);
                 try {
                     const res = await api.get('/customers', { params: { branch_id: branchId, search: query } });
-                    setSearchResults(res.data || []);
+                    // API returns { items: [...], total: X }
+                    const data = res.data?.items || res.data?.data || res.data || [];
+                    setSearchResults(Array.isArray(data) ? data : []);
                 } catch (err) {} finally { setIsSearchingClient(false); }
             } else { setSearchResults([]); }
         }, 300);
@@ -229,7 +244,15 @@ export function BookingEditor({
     }, [showClientDropdown]);
 
     const handleSelectCustomer = (c: any) => {
-        setFormData({ ...formData, clientName: `${c.first_name} ${c.last_name || ''}`.trim(), clientPhone: c.phone || '', clientEmail: c.email || '', clientID: c.id || null, isGuest: false });
+        setFormData({ 
+            ...formData, 
+            clientName: `${c.first_name} ${c.last_name || ''}`.trim(), 
+            clientPhone: c.phone || '', 
+            clientEmail: c.email || '', 
+            clientID: c.id || null, 
+            isGuest: false,
+            discount: c.discount || 0
+        });
         setSearchResults([]); setShowClientDropdown(false); setActiveSearchField(null);
     };
 
@@ -382,12 +405,23 @@ export function BookingEditor({
     const toggleCategory = (id: number) => setCollapsedCategories(prev => ({...prev, [id]: !prev[id]}));
 
     const ClientDropdown = ({ field }: { field: 'name' | 'phone' }) => {
-        if (!showClientDropdown || activeSearchField !== field || (searchResults.length === 0 && !isSearchingClient)) return null;
+        if (!showClientDropdown || activeSearchField !== field) return null;
+        
+        const hasResults = Array.isArray(searchResults) && searchResults.length > 0;
+        const shouldShow = isSearchingClient || hasResults || (activeSearchField === field);
+
+        if (!shouldShow) return null;
+
         return (
             <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-neutral-100 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
-                {isSearchingClient ? <div className="p-4 text-center text-xs font-bold text-neutral-400 uppercase tracking-widest">Поиск...</div> : (
+                {isSearchingClient ? (
+                    <div className="p-4 text-center text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center justify-center gap-2">
+                        <div className="w-3 h-3 border-2 border-neutral-200 border-t-neutral-900 rounded-full animate-spin" />
+                        Поиск...
+                    </div>
+                ) : (
                     <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-                        {searchResults.map((c, i) => (
+                        {hasResults && searchResults.map((c, i) => (
                             <div key={i} onClick={() => handleSelectCustomer(c)} className="p-4 border-b border-neutral-50 hover:bg-neutral-50 cursor-pointer flex items-center justify-between group transition-colors">
                                 <div className="flex items-center gap-3"><div className="w-10 h-10 bg-neutral-900 rounded-xl flex items-center justify-center text-white text-xs font-black">{c.first_name?.[0]}{c.last_name?.[0]}</div>
                                 <div className="flex flex-col"><span className="text-sm font-bold text-neutral-900 group-hover:text-black">{c.first_name} {c.last_name}</span><span className="text-[10px] font-black text-neutral-400">{c.phone}</span></div></div>
@@ -502,70 +536,139 @@ export function BookingEditor({
                             </div>
                         </div>
                         <div className="p-6 border-t border-neutral-100 bg-white shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.05)]">
-                            <div className="grid grid-cols-2 gap-6 mb-6"><div className="space-y-1"><span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Итого</span><div className="text-lg font-black text-neutral-900">{formData.totalPrice} BYN</div></div><div className="space-y-1 text-right"><span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Остаток</span><div className={cn("text-lg font-black", remainingToPay > 0 ? "text-red-500" : "text-emerald-500")}>{remainingToPay} BYN</div></div></div>
+                            <div className="grid grid-cols-2 gap-6 mb-6">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Итого</span>
+                                        {formData.discount > 0 && (
+                                            <span className="px-1.5 py-0.5 bg-[#F5FF82] text-black text-[8px] font-black rounded-md uppercase tracking-tighter">
+                                                -{formData.discount}%
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-baseline gap-2">
+                                        <div className="text-lg font-black text-neutral-900">{formData.totalPrice} BYN</div>
+                                        {formData.discount > 0 && (
+                                            <div className="text-[10px] font-bold text-neutral-300 line-through">
+                                                {formData.selectedServices.reduce((sum, s) => sum + (s.price || 0), 0)}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-1 text-right">
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-400">Остаток</span>
+                                    <div className={cn("text-lg font-black", remainingToPay > 0 ? "text-red-500" : "text-emerald-500")}>
+                                        {remainingToPay} BYN
+                                    </div>
+                                </div>
+                            </div>
                             <div className="flex flex-col gap-4"><div className="grid grid-cols-3 gap-2">{[{ id: 'cash', label: 'Нал', icon: Banknote }, { id: 'card', label: 'Безнал', icon: CreditCard }, { id: 'other', label: 'Другое', icon: Smartphone }].map(method => (<Button key={method.id} variant="outline" onClick={() => { if (remainingToPay > 0) setFormData({...formData, payments: [...formData.payments, {method: method.id, amount: remainingToPay}]}); }} className="h-10 rounded-xl border-neutral-100 font-bold gap-2 hover:bg-neutral-50 text-[10px] uppercase"><method.icon className="h-3.5 w-3.5" />{method.label}</Button>))}</div><div className="space-y-2">{formData.payments.map((p, i) => (<div key={i} className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl border border-neutral-100 transition-all"><span className="text-[9px] font-black uppercase text-neutral-400">{p.method === 'cash' ? 'НАЛ' : p.method === 'card' ? 'БЕЗНАЛ' : 'ДРУГОЕ'}</span><div className="flex items-center gap-2"><Input type="number" value={p.amount} onChange={e => { const newPayments = [...formData.payments]; newPayments[i].amount = parseFloat(e.target.value) || 0; setFormData({...formData, payments: newPayments}); }} className="h-7 w-20 text-right font-black border-none bg-white rounded-md text-xs p-1" /><button onClick={() => setFormData({...formData, payments: formData.payments.filter((_, idx) => idx !== i)})} className="text-neutral-300 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button></div></div>))}</div></div>
                         </div>
                     </div>
 
                     <div className="p-6 flex flex-col gap-8 overflow-y-auto custom-scrollbar bg-white client-search-container">
-                        <div className="space-y-6">
-                            <div className="flex items-center justify-between px-1"><h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em]">Клиент</h4>{formData.isGuest && <Badge className="bg-neutral-100 text-neutral-400 border-none text-[9px] font-black uppercase">Гость</Badge>}</div>
-                            <div className="space-y-4">
-                                <div className="space-y-2 relative"><Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">ФИО / Поиск</Label><div className="relative"><User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" /><Input value={formData.clientName} onChange={e => { const val = e.target.value; setFormData({...formData, clientName: val}); setActiveSearchField('name'); setShowClientDropdown(true); }} onFocus={() => { setActiveSearchField('name'); setShowClientDropdown(true); }} placeholder="Введите имя..." className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" /><ClientDropdown field="name" /></div></div>
-                                <div className="space-y-2 relative"><Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">Телефон</Label><div className="relative"><Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" /><Input value={formData.clientPhone} onChange={e => { const val = e.target.value; setFormData({...formData, clientPhone: val}); setActiveSearchField('phone'); setShowClientDropdown(true); }} onFocus={() => { setActiveSearchField('phone'); setShowClientDropdown(true); }} placeholder="+375 •• •••-••-••" className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" /><ClientDropdown field="phone" /></div></div>
-                            </div>
+                        <div className="flex items-center justify-between px-1 mb-2">
+                            <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em]">Клиент</h4>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => setIsHistoryModalOpen(true)}
+                                className="h-8 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-900 rounded-lg text-[10px] font-black uppercase tracking-widest gap-2"
+                            >
+                                <History className="h-3.5 w-3.5" />
+                                История
+                            </Button>
                         </div>
 
-                        <div className="flex-1 flex flex-col min-h-0">
-                            <div className="flex-1 min-h-0">
-                                <div className="space-y-6 animate-in fade-in slide-in-from-left-2 duration-300">
-                                    {/* SUMMARY STATS */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                            <div className="text-lg font-black text-neutral-900">{customerStats?.total_visits || 0}</div>
-                                            <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Визитов</div>
-                                        </div>
-                                        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                            <div className="text-lg font-black text-neutral-900">{customerStats?.avg_check?.toFixed(0) || 0} <span className="text-[10px]">BYN</span></div>
-                                            <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Средний чек</div>
-                                        </div>
-                                        <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                            <div className="text-lg font-black text-red-500">{customerStats?.no_shows || 0}</div>
-                                            <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Пропуски</div>
-                                        </div>
-                                        <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100/50">
-                                            <div className="text-lg font-black text-emerald-600">{customerStats?.total_revenue?.toFixed(0) || 0} <span className="text-[10px]">BYN</span></div>
-                                            <div className="text-[8px] font-black uppercase text-emerald-600/60 tracking-widest">LTV</div>
+                        <div className="flex-1 flex flex-col min-h-0 space-y-8 animate-in fade-in duration-500">
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between px-1">
+                                
+                                    {formData.isGuest && <Badge className="bg-neutral-100 text-neutral-400 border-none text-[9px] font-black uppercase">Гость</Badge>}
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="space-y-2 relative">
+                                        <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">ФИО / Поиск</Label>
+                                        <div className="relative">
+                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                            <Input 
+                                                value={formData.clientName} 
+                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientName: val}); setActiveSearchField('name'); setShowClientDropdown(true); }} 
+                                                onFocus={() => { setActiveSearchField('name'); setShowClientDropdown(true); }} 
+                                                placeholder="Введите имя..." 
+                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" 
+                                            />
+                                            <ClientDropdown field="name" />
                                         </div>
                                     </div>
+                                    <div className="space-y-2 relative">
+                                        <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">Телефон</Label>
+                                        <div className="relative">
+                                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
+                                            <Input 
+                                                value={formData.clientPhone} 
+                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientPhone: val}); setActiveSearchField('phone'); setShowClientDropdown(true); }} 
+                                                onFocus={() => { setActiveSearchField('phone'); setShowClientDropdown(true); }} 
+                                                placeholder="+375 •• •••-••-••" 
+                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" 
+                                            />
+                                            <ClientDropdown field="phone" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
 
-                                    {/* RECENT VISITS */}
-                                    <div className="space-y-4">
-                                        <h4 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest px-1">Последние визиты</h4>
-                                        <div className="space-y-2">
-                                            {customerVisits.length > 0 ? customerVisits.slice(0, 10).map((v: any, i: number) => (
-                                                <div key={i} className="p-3 bg-white border border-neutral-100 rounded-xl shadow-sm space-y-1">
-                                                    <div className="flex justify-between items-start">
-                                                        <span className="text-[10px] font-bold text-neutral-900">{DateTime.fromISO(v.start_time).setLocale('ru').toFormat('d MMM yyyy, HH:mm')}</span>
-                                                        <Badge className={cn(
-                                                            "text-[7px] font-black uppercase px-1 py-0 rounded",
-                                                            v.status === 'finished' ? "bg-emerald-50 text-emerald-600" : 
-                                                            v.status === 'no_show' ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-400"
-                                                        )}>
-                                                            {v.status}
-                                                        </Badge>
+                            <div className="flex-1 flex flex-col min-h-0">
+                                <div className="flex-1 min-h-0">
+                                    <div className="space-y-6 animate-in fade-in slide-in-from-left-2 duration-300">
+                                        {/* SUMMARY STATS */}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <div className="text-lg font-black text-neutral-900">{customerStats?.total_visits || 0}</div>
+                                                <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Визитов</div>
+                                            </div>
+                                            <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <div className="text-lg font-black text-neutral-900">{customerStats?.avg_check?.toFixed(0) || 0} <span className="text-[10px]">BYN</span></div>
+                                                <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Средний чек</div>
+                                            </div>
+                                            <div className="p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                                <div className="text-lg font-black text-red-500">{customerStats?.no_shows || 0}</div>
+                                                <div className="text-[8px] font-black uppercase text-neutral-400 tracking-widest">Пропуски</div>
+                                            </div>
+                                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100/50">
+                                                <div className="text-lg font-black text-emerald-600">{customerStats?.total_revenue?.toFixed(0) || 0} <span className="text-[10px]">BYN</span></div>
+                                                <div className="text-[8px] font-black uppercase text-emerald-600/60 tracking-widest">LTV</div>
+                                            </div>
+                                        </div>
+
+                                        {/* RECENT VISITS */}
+                                        <div className="space-y-4">
+                                            <h4 className="text-[10px] font-black uppercase text-neutral-400 tracking-widest px-1">Последние визиты</h4>
+                                            <div className="space-y-2 pb-4">
+                                                {customerVisits.length > 0 ? customerVisits.slice(0, 10).map((v: any, i: number) => (
+                                                    <div key={i} className="p-3 bg-white border border-neutral-100 rounded-xl shadow-sm space-y-1">
+                                                        <div className="flex justify-between items-start">
+                                                            <span className="text-[10px] font-bold text-neutral-900">{DateTime.fromISO(v.start_time).setLocale('ru').toFormat('d MMM yyyy, HH:mm')}</span>
+                                                            <Badge className={cn(
+                                                                "text-[7px] font-black uppercase px-1 py-0 rounded",
+                                                                v.status === 'finished' ? "bg-emerald-50 text-emerald-600" : 
+                                                                v.status === 'no_show' ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-400"
+                                                            )}>
+                                                                {v.status}
+                                                            </Badge>
+                                                        </div>
+                                                        <div className="text-[11px] font-bold text-neutral-600 truncate">{v.service_name}</div>
+                                                        <div className="flex justify-between items-center text-[9px] font-medium text-neutral-400 italic">
+                                                            <span>{v.employee_name}</span>
+                                                            <span className="font-black not-italic text-neutral-900">{v.price} BYN</span>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[11px] font-bold text-neutral-600 truncate">{v.service_name}</div>
-                                                    <div className="flex justify-between items-center text-[9px] font-medium text-neutral-400 italic">
-                                                        <span>{v.employee_name}</span>
-                                                        <span className="font-black not-italic text-neutral-900">{v.price} BYN</span>
+                                                )) : (
+                                                    <div className="py-12 text-center border-2 border-dashed border-neutral-100 rounded-3xl">
+                                                        <p className="text-[10px] font-bold text-neutral-300 uppercase tracking-widest">История пуста</p>
                                                     </div>
-                                                </div>
-                                            )) : (
-                                                <div className="py-12 text-center border-2 border-dashed border-neutral-100 rounded-3xl">
-                                                    <p className="text-[10px] font-bold text-neutral-300 uppercase tracking-widest">История пуста</p>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -601,6 +704,58 @@ export function BookingEditor({
                 <div className="bg-neutral-50/50 p-6 flex gap-3 sm:justify-center">
                     <Button variant="ghost" onClick={() => setWarningType(null)} className="flex-1 h-12 rounded-xl font-bold hover:bg-neutral-100">Отмена</Button>
                     <Button onClick={() => executeSave(true)} disabled={isSaving} className="flex-1 h-12 bg-neutral-900 hover:bg-black text-white rounded-xl font-bold">Да, создать</Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
+            <DialogContent className="max-w-md p-0 overflow-hidden border-none bg-white rounded-[2rem] shadow-2xl flex flex-col max-h-[80vh]">
+                <div className="h-16 border-b border-neutral-100 flex items-center justify-between px-6 shrink-0">
+                    <h4 className="text-[11px] font-black uppercase text-neutral-900 tracking-[0.2em]">История изменений</h4>
+                    <Button variant="ghost" size="icon" onClick={() => setIsHistoryModalOpen(false)} className="text-neutral-300 hover:text-black rounded-xl"><X className="h-5 w-5" /></Button>
+                </div>
+                <DialogTitle className="sr-only">История изменений записи</DialogTitle>
+                <DialogDescription className="sr-only">Логи всех действий с текущей записью</DialogDescription>
+                
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                    <div className="space-y-6 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-neutral-100">
+                        {historyLogs.length > 0 ? historyLogs.map((log: any, i: number) => (
+                            <div key={i} className="relative pl-8 space-y-2 group">
+                                <div className="absolute left-0 top-1.5 w-[23px] h-[23px] rounded-full bg-white border-2 border-neutral-100 flex items-center justify-center z-10 group-hover:border-neutral-900 transition-colors">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-neutral-400 group-hover:bg-neutral-900 transition-colors" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-900">
+                                            {log.action === 'created' ? 'Запись создана' : 
+                                                log.action === 'status_changed' ? 'Статус изменен' : 'Запись обновлена'}
+                                        </span>
+                                        <span className="text-[8px] font-bold text-neutral-400">
+                                            {DateTime.fromISO(log.created_at).setLocale('ru').toFormat('d MMM, HH:mm')}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-500 font-medium italic leading-relaxed">
+                                        {log.change_details || (log.action === 'status_changed' ? (
+                                            <>Изменение статуса: <span className="font-black not-italic text-neutral-900 uppercase tracking-tighter">{log.old_value}</span> → <span className="font-black not-italic text-neutral-900 uppercase tracking-tighter">{log.new_value}</span></>
+                                        ) : log.action === 'created' ? (
+                                            <>Запись добавлена администратором</>
+                                        ) : (
+                                            <>Внесены изменения в запись</>
+                                        ))}
+                                    </p>
+                                    {log.user_name && <div className="text-[8px] font-black uppercase opacity-40">Автор: {log.user_name}</div>}
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="py-20 text-center">
+                                <History className="h-10 w-10 text-neutral-100 mx-auto mb-4" />
+                                <p className="text-[10px] font-black uppercase text-neutral-300 tracking-widest">Логов пока нет</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="p-6 border-t border-neutral-100 bg-neutral-50/50 flex justify-center">
+                    <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)} className="h-11 px-8 rounded-xl font-bold">Закрыть</Button>
                 </div>
             </DialogContent>
         </Dialog>

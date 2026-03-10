@@ -250,27 +250,52 @@ export default function WidgetsPage() {
 
             {/* Code Modal */}
             <Dialog open={isCodeModalOpen} onOpenChange={setIsCodeModalOpen}>
-                <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none rounded-[32px] shadow-2xl">
+                <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none rounded-[32px] shadow-2xl">
                     <div className="bg-white">
                         <div className="px-8 pb-4 pt-8 border-b border-neutral-100">
                             <DialogTitle className="text-2xl font-black text-neutral-900 tracking-tight">Код для вставки</DialogTitle>
-                            <p className="text-neutral-500 text-sm mt-1 font-medium">Установите виджет на ваш сайт</p>
+                            <p className="text-neutral-500 text-sm mt-1 font-medium">Установите этот код перед закрывающим тегом {`</body>`}</p>
                         </div>
                         <div className="p-8 space-y-6">
                             <div className="relative group">
-                                <pre className="bg-neutral-900 text-neutral-100 p-6 rounded-2xl text-[11px] overflow-x-auto font-mono leading-relaxed">
+                                <div className="absolute -top-3 left-4 px-2 bg-white text-[10px] font-black uppercase tracking-widest text-neutral-400">JavaScript Snippet</div>
+                                <pre className="bg-[#0D0D0D] text-[#E0E0E0] p-8 pt-10 rounded-[24px] text-[12px] overflow-x-auto font-mono leading-relaxed border border-neutral-800 shadow-inner">
                                     {`<script \n  type="text/javascript" \n  src="${mounted ? window.location.origin : ''}/widget.js?id=${selectedWidget?.code}" \n  charset="UTF-8">\n</script>`}
                                 </pre>
-                                <Button variant="ghost" size="sm" className="absolute top-4 right-4 text-white/50 hover:text-white" onClick={() => { handleCopy(`<script type="text/javascript" src="${window.location.origin}/widget.js?id=${selectedWidget?.code}" charset="UTF-8"></script>`); }}>
-                                    <Copy className="h-4 w-4" />
+                                <Button 
+                                    className="absolute top-6 right-6 h-10 px-4 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-xl font-bold text-xs flex gap-2 backdrop-blur-sm transition-all" 
+                                    onClick={() => { handleCopy(`<script type="text/javascript" src="${window.location.origin}/widget.js?id=${selectedWidget?.code}" charset="UTF-8"></script>`); }}
+                                >
+                                    <Copy className="h-3.5 w-3.5" /> Копировать код
                                 </Button>
                             </div>
-                            <div className="p-5 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-start gap-4">
-                                <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-neutral-100 shrink-0 text-neutral-400"><Info className="h-5 w-5" /></div>
-                                <div className="space-y-1"><h4 className="font-bold text-sm text-neutral-900">Инструкция</h4><p className="text-xs text-neutral-500 leading-relaxed">Просто скопируйте этот код и вставьте его перед закрывающим тегом <code>{`</body>`}</code> на любой странице вашего сайта.</p></div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-5 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-start gap-4">
+                                    <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-neutral-100 shrink-0 text-neutral-400">
+                                        <Info className="h-5 w-5 text-neutral-900" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h4 className="font-bold text-sm text-neutral-900">Инструкция</h4>
+                                        <p className="text-[11px] text-neutral-500 leading-relaxed">Вставьте код в HTML вашего сайта. Виджет появится автоматически.</p>
+                                    </div>
+                                </div>
+                                <div className="p-5 rounded-2xl bg-black text-white flex items-start gap-4">
+                                    <div className="h-10 w-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0 text-white">
+                                        <Globe className="h-5 w-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h4 className="font-bold text-sm">Готово к работе</h4>
+                                        <p className="text-[11px] text-white/50 leading-relaxed">Моментальная синхронизация с вашим расписанием.</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="p-6 bg-neutral-50 border-t border-neutral-100 flex justify-end"><Button onClick={() => setIsCodeModalOpen(false)} className="rounded-xl font-bold bg-neutral-900 text-white h-11 px-8">Закрыть</Button></div>
+                        <div className="p-6 bg-neutral-50/50 border-t border-neutral-100 flex justify-end">
+                            <Button onClick={() => setIsCodeModalOpen(false)} className="rounded-xl font-bold bg-neutral-900 text-white h-11 px-8 shadow-lg shadow-neutral-200 hover:-translate-y-0.5 transition-all">
+                                Понятно, закрыть
+                            </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

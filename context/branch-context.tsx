@@ -25,10 +25,11 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     // Persistence
     useEffect(() => {
         const saved = localStorage.getItem('lastBranchID');
-        if (saved) {
+        if (saved && !selectedBranchID) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSelectedBranchIDState(saved);
         }
-    }, []);
+    }, [selectedBranchID]);
 
     const setSelectedBranchID = (id: string) => {
         setSelectedBranchIDState(id);
@@ -62,12 +63,15 @@ export function BranchProvider({ children }: { children: ReactNode }) {
 
             if (!selectedBranchID) {
                 if (saved && isValid(saved)) {
+                    // eslint-disable-next-line react-hooks/set-state-in-effect
                     setSelectedBranchIDState(saved);
                 } else {
+                    // eslint-disable-next-line react-hooks/set-state-in-effect
                     setSelectedBranchIDState(branches[0].id.toString());
                 }
             } else if (!isValid(selectedBranchID)) {
                 // If currently selected ID is no longer in branches list, reset to first
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setSelectedBranchIDState(branches[0].id.toString());
             }
         }

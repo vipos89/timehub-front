@@ -41,7 +41,7 @@ export default function CompanyPage() {
     // -- Company State --
     const [companyForm, setCompanyForm] = useState<any>({
         name: '', description: '', logo_url: '', website: '', tax_id: '', legal_name: '', legal_address: '',
-        contact_phones: [], contact_emails: [], social_links: { instagram: '', telegram: '', vk: '', whatsapp: '' }
+        contact_phones: [], contact_emails: [], social_links: { instagram: '', telegram: '', vk: '' }
     });
 
     // -- Branch State --
@@ -254,7 +254,7 @@ export default function CompanyPage() {
                             <Card className="rounded-[2.5rem] border-none shadow-sm p-8 bg-white space-y-6">
                                 <h3 className="text-xl font-bold flex items-center gap-3"><Share2 className="h-5 w-5" /> Социальные сети</h3>
                                 <div className="grid grid-cols-2 gap-6">
-                                    {['instagram', 'telegram', 'vk', 'whatsapp'].map((s) => (
+                                    {['instagram', 'telegram', 'vk'].map((s) => (
                                         <div key={s} className="grid gap-2">
                                             <Label className="text-xs uppercase font-black opacity-40">{s}</Label>
                                             <Input value={companyForm.social_links[s]} onChange={(e) => setCompanyForm({ ...companyForm, social_links: { ...companyForm.social_links, [s]: e.target.value } })} className="h-12 rounded-2xl" placeholder="Никнейм или ссылка"/>
@@ -277,11 +277,11 @@ export default function CompanyPage() {
                                 <p className="text-neutral-400 text-sm leading-relaxed">Настройте общую информацию, которая будет отображаться клиентам при записи в любой из ваших филиалов.</p>
                                 <div className="space-y-3 pt-4">
                                     {['Логотип', 'Контакты', 'Юр. данные'].map(item => (
-                                        <div key={item} className="flex items-center gap-3"><div className="h-6 w-6 rounded-lg bg-white/10 flex items-center justify-center"><Check className="h-3 w-3 text-[#F5FF82]" /></div><span className="text-xs font-bold text-neutral-200 uppercase tracking-widest">{item}</span></div>
+                                        <div key={item} className="flex items-center gap-3"><div className="h-6 w-6 rounded-lg bg-white/10 flex items-center justify-center"><Check className="h-3 w-3 text-[#FF7A00]" /></div><span className="text-xs font-bold text-neutral-200 uppercase tracking-widest">{item}</span></div>
                                     ))}
                                 </div>
                             </div>
-                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-[#F5FF82]/10 blur-3xl rounded-full" />
+                            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-[#FF7A00]/10 blur-3xl rounded-full" />
                         </Card>
                     </div>
                 </div>

@@ -23,6 +23,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import {
@@ -44,7 +46,8 @@ export default function CustomersPage() {
     const queryClient = useQueryClient();
     const { selectedBranchID } = useBranch();
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState<'name' | 'recent'>('name');
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(20);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentCustomer, setCurrentCustomer] = useState<any>(null);
     const [notificationFilter, setNotificationFilter] = useState<string>('all');
@@ -55,21 +58,29 @@ export default function CustomersPage() {
         email: '',
         phone: '',
         notes: '',
+        birthday: '',
+        gender: '',
+        category: '',
+        discount: 0,
+        is_blocked: false,
     });
-
-    // Queries
-    const { data: customers, isLoading: isLoadingCustomers } = useQuery({
-        queryKey: ['customers', selectedBranchID, searchQuery, sortBy],
-        queryFn: async () => {
-            const res = await api.get('/customers', {
-                params: {
-                    branch_id: selectedBranchID,
-                    search: searchQuery,
-                }
-            });
+// Queries
+const { data, isLoading: isLoadingCustomers } = useQuery({
+    queryKey: ['customers', selectedBranchID, searchQuery, page, pageSize],
+    queryFn: async () => {
+        const res = await api.get('/customers', {
+            params: {
+                branch_id: selectedBranchID,
+                search: searchQuery,
+                page: page,
+                page_size: pageSize,
+            }
+        });
+            
+            const { items, total } = res.data;
             
             // For each customer, fetch their stats
-            const customersWithStats = await Promise.all(res.data.map(async (c: any) => {
+            const customersWithStats = await Promise.all(items.map(async (c: any) => {
                 try {
                     const statsRes = await api.get(`/customers/${c.id}/stats`);
                     return {
@@ -86,10 +97,19 @@ export default function CustomersPage() {
                 }
             }));
             
-            return customersWithStats.sort((a: any, b: any) => a.first_name.localeCompare(b.first_name));
+            return { items: customersWithStats, total };
         },
         enabled: !!selectedBranchID,
     });
+
+    const customers = data?.items || [];
+    const totalCount = data?.total || 0;
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    const handleSearchChange = (val: string) => {
+        setSearchQuery(val);
+        setPage(1);
+    };
 
     const { data: customerVisits, isLoading: isLoadingVisits } = useQuery({
         queryKey: ['customer-visits', currentCustomer?.id],
@@ -151,6 +171,11 @@ export default function CustomersPage() {
             email: '',
             phone: '',
             notes: '',
+            birthday: '',
+            gender: '',
+            category: '',
+            discount: 0,
+            is_blocked: false,
         });
         setCurrentCustomer(null);
         setActiveTab('info');
@@ -177,6 +202,11 @@ export default function CustomersPage() {
             email: customer.email || '',
             phone: customer.phone || '',
             notes: customer.notes || '',
+            birthday: customer.birthday ? format(new Date(customer.birthday), 'yyyy-MM-dd') : '',
+            gender: customer.gender || '',
+            category: customer.category || '',
+            discount: customer.discount || 0,
+            is_blocked: customer.is_blocked || false,
         });
         setIsModalOpen(true);
     };
@@ -185,6 +215,8 @@ export default function CustomersPage() {
         const payload = {
             ...formData,
             branch_id: selectedBranchID ? parseInt(selectedBranchID) : 0,
+            discount: parseFloat(formData.discount.toString()) || 0,
+            birthday: formData.birthday ? new Date(formData.birthday).toISOString() : null,
         };
 
         if (currentCustomer) {
@@ -215,7 +247,7 @@ export default function CustomersPage() {
                     <Input 
                         placeholder="Поиск по имени или телефону..." 
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={(e) => handleSearchChange(e.target.value)}
                         className="pl-12 h-12 bg-white border-neutral-100 rounded-2xl shadow-sm focus:ring-1 focus:ring-neutral-200 font-medium"
                     />
                 </div>
@@ -316,6 +348,53 @@ export default function CustomersPage() {
                 </CardContent>
             </Card>
 
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between px-2">
+                    <p className="text-[10px] font-black uppercase text-neutral-400 tracking-widest italic">
+                        Показано {customers.length} из {totalCount} клиентов
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="h-9 px-4 rounded-xl border-neutral-100 text-[10px] font-black uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-900 hover:text-white transition-all"
+                        >
+                            Назад
+                        </Button>
+                        <div className="flex items-center gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                                <Button
+                                    key={p}
+                                    variant={page === p ? "default" : "ghost"}
+                                    size="sm"
+                                    onClick={() => setPage(p)}
+                                    className={cn(
+                                        "h-9 w-9 p-0 rounded-xl text-[10px] font-black transition-all",
+                                        page === p 
+                                            ? "bg-neutral-900 text-[#FF7A00] shadow-lg shadow-black/10 hover:bg-black" 
+                                            : "text-neutral-400 hover:bg-neutral-100"
+                                    )}
+                                >
+                                    {p}
+                                </Button>
+                            ))}
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages}
+                            className="h-9 px-4 rounded-xl border-neutral-100 text-[10px] font-black uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-900 hover:text-white transition-all"
+                        >
+                            Вперед
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             {/* Integrated Details/Edit Modal */}
             <Dialog open={isModalOpen} onOpenChange={(open) => {
                 if (!open) { 
@@ -380,7 +459,9 @@ export default function CustomersPage() {
                                             <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                                                 <div className="space-y-1">
                                                     <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Последний визит</span>
-                                                    <p className="text-[11px] font-black text-neutral-900 italic leading-tight">06.03 09:15</p>
+                                                    <p className="text-[11px] font-black text-neutral-900 italic leading-tight">
+                                                        {currentCustomer?.stats?.last_visit_date ? format(new Date(currentCustomer.stats.last_visit_date), 'dd.MM HH:mm') : '—'}
+                                                    </p>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Всего визитов</span>
@@ -410,8 +491,10 @@ export default function CustomersPage() {
                                     <div className="space-y-4 pt-6 border-t border-neutral-100">
                                         <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Данные записи</h4>
                                         <div className="space-y-1">
-                                            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Дата создания</span>
-                                            <p className="text-xs font-bold text-neutral-900 italic">—</p>
+                                            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Дата регистрации</span>
+                                            <p className="text-xs font-bold text-neutral-900 italic">
+                                                {currentCustomer?.created_at ? format(new Date(currentCustomer.created_at), 'dd.MM.yyyy') : '—'}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -462,13 +545,23 @@ export default function CustomersPage() {
                                         <div className="min-h-min p-8 space-y-8">
                                             <TabsContent value="info" className="m-0 outline-none">
                                                 <div className="grid gap-6">
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Имя</Label>
-                                                        <Input 
-                                                            value={formData.first_name} 
-                                                            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
-                                                        />
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Имя</Label>
+                                                            <Input 
+                                                                value={formData.first_name} 
+                                                                onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Фамилия</Label>
+                                                            <Input 
+                                                                value={formData.last_name} 
+                                                                onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
+                                                            />
+                                                        </div>
                                                     </div>
 
                                                     <div className="grid grid-cols-2 gap-4">
@@ -481,69 +574,62 @@ export default function CustomersPage() {
                                                             />
                                                         </div>
                                                         <div className="space-y-2">
-                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дополнительный телефон</Label>
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Email</Label>
                                                             <Input 
-                                                                placeholder="+375 00 000-00-00"
-                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                                value={formData.email} 
+                                                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                                                placeholder="example@mail.ru"
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
                                                             />
                                                         </div>
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Email</Label>
-                                                        <Input 
-                                                            value={formData.email} 
-                                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                                            placeholder="example@mail.ru"
-                                                            className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
-                                                        />
                                                     </div>
 
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div className="space-y-2">
                                                             <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Дата рождения</Label>
                                                             <Input 
-                                                                placeholder="01.01.2000"
-                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
+                                                                type="date"
+                                                                value={formData.birthday}
+                                                                onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
+                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
                                                             />
                                                         </div>
                                                         <div className="space-y-2">
                                                             <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Пол</Label>
-                                                            <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                                <span className="text-sm font-medium text-neutral-900">Не выбран</span>
-                                                                <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
-                                                            </div>
+                                                            <Select value={formData.gender} onValueChange={(val) => setFormData({ ...formData, gender: val })}>
+                                                                <SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium">
+                                                                    <SelectValue placeholder="Не выбран" />
+                                                                </SelectTrigger>
+                                                                <SelectContent className="bg-white rounded-xl">
+                                                                    <SelectItem value="male">Мужской</SelectItem>
+                                                                    <SelectItem value="female">Женский</SelectItem>
+                                                                    <SelectItem value="other">Другой</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
                                                         </div>
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Категория</Label>
-                                                        <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                            <span className="text-sm font-medium text-neutral-300">Не выбрана</span>
-                                                            <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="space-y-2">
-                                                        <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Важность</Label>
-                                                        <div className="h-11 rounded-xl border border-neutral-200 bg-white px-4 flex items-center justify-between cursor-pointer group hover:bg-neutral-50 transition-colors">
-                                                            <span className="text-sm font-medium text-neutral-900">Без класса важности</span>
-                                                            <ArrowUpDown className="h-3 w-3 text-neutral-400 transition-colors group-hover:text-black" />
-                                                            </div>
                                                     </div>
 
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div className="space-y-2">
-                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Номер карты</Label>
-                                                            <Input 
-                                                                placeholder="000 000 000"
-                                                                className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium text-neutral-300" 
-                                                            />
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Категория</Label>
+                                                            <Select value={formData.category} onValueChange={(val) => setFormData({ ...formData, category: val })}>
+                                                                <SelectTrigger className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium">
+                                                                    <SelectValue placeholder="Не выбрана" />
+                                                                </SelectTrigger>
+                                                                <SelectContent className="bg-white rounded-xl">
+                                                                    <SelectItem value="regular">Постоянный</SelectItem>
+                                                                    <SelectItem value="vip">VIP</SelectItem>
+                                                                    <SelectItem value="new">Новый</SelectItem>
+                                                                    <SelectItem value="problematic">Проблемный</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
                                                         </div>
                                                         <div className="space-y-2">
-                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Скидка, %</Label>
+                                                            <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Персональная скидка, %</Label>
                                                             <Input 
-                                                                defaultValue="0"
+                                                                type="number"
+                                                                value={formData.discount}
+                                                                onChange={(e) => setFormData({ ...formData, discount: parseFloat(e.target.value) || 0 })}
                                                                 className="h-11 rounded-xl border-neutral-200 bg-white focus:ring-1 focus:ring-neutral-900 font-medium" 
                                                             />
                                                         </div>
@@ -552,18 +638,21 @@ export default function CustomersPage() {
                                                     <div className="space-y-2">
                                                         <Label className="text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Примечание</Label>
                                                         <textarea 
-                                                            rows={6} 
+                                                            rows={4} 
                                                             value={formData.notes}
                                                             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                                            className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none" 
+                                                            className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-neutral-900 transition-all resize-none shadow-sm" 
                                                         />
                                                     </div>
 
                                                     <div className="flex items-center gap-3 py-2">
-                                                        <div className="h-5 w-5 rounded border border-neutral-200 flex items-center justify-center">
-                                                            {/* Checkbox placeholder */}
-                                                        </div>
-                                                        <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-tight">Запретить записываться через онлайн-запись</span>
+                                                        <Checkbox 
+                                                            id="is_blocked" 
+                                                            checked={formData.is_blocked}
+                                                            onCheckedChange={(checked) => setFormData({ ...formData, is_blocked: !!checked })}
+                                                            className="h-5 w-5 rounded-md border-neutral-200 data-[state=checked]:bg-neutral-900 data-[state=checked]:border-neutral-900"
+                                                        />
+                                                        <Label htmlFor="is_blocked" className="text-[11px] font-bold text-neutral-500 uppercase tracking-tight cursor-pointer">Запретить записываться через онлайн-запись</Label>
                                                     </div>
                                                 </div>
                                             </TabsContent>
