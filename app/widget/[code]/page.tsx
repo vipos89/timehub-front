@@ -26,9 +26,16 @@ export default function WidgetPage() {
 
     const companyId = widget?.company_id;
     const widgetType = widget?.widget_type || 'branch';
-    
-    // Default branch from widget or selected by user in network mode
-    const activeBranchId = selectedBranchId || widget?.branch_id;
+
+    // Load branches for network widget OR if branch_id is missing
+    const { data: branches = [] } = useQuery({
+        queryKey: ['branches', companyId],
+        queryFn: async () => (await api.get(`/companies/${companyId}/branches`)).data,
+        enabled: !!companyId && (widgetType === 'network' || !widget?.branch_id)
+    });
+
+    // Default branch from widget or selected by user, fallback to the first branch if missing
+    const activeBranchId = selectedBranchId || widget?.branch_id || (branches.length > 0 ? branches[0].id : null);
 
     const { data: company, isLoading: isLoadingCompany } = useQuery({
         queryKey: ['company', companyId],
@@ -36,12 +43,6 @@ export default function WidgetPage() {
         enabled: !!companyId
     });
 
-    // Load branches for network widget
-    const { data: branches = [] } = useQuery({
-        queryKey: ['branches', companyId],
-        queryFn: async () => (await api.get(`/companies/${companyId}/branches`)).data,
-        enabled: !!companyId && widgetType === 'network'
-    });
 
     // Load active branch details
     const { data: branch, isLoading: isLoadingBranch } = useQuery({

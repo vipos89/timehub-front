@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Star, CheckCircle2, MessageSquare, ArrowRight, X } from 'lucide-react';
+import { Star, CheckCircle2, MessageSquare, ArrowRight, X, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateTime } from 'luxon';
 
@@ -21,15 +21,24 @@ export default function ReviewPage() {
     const [hoveredRating, setHoveredRating] = useState(0);
     const [comment, setComment] = useState('');
     const [submitted, setSubmitted] = useState(false);
+    const [isExpired, setIsExpired] = useState(false);
 
     // 1. Fetch Booking Info
-    const { data: booking, isLoading: isLoadingBooking } = useQuery({
+    const { data: booking, isLoading: isLoadingBooking, error: bookingError } = useQuery({
         queryKey: ['booking', bookingId],
         queryFn: async () => {
-            const res = await api.get(`/appointments/${bookingId}`);
-            return res.data;
+            try {
+                const res = await api.get(`/bookings/public/${bookingId}`);
+                return res.data;
+            } catch (err: any) {
+                if (err.response?.status === 410) {
+                    setIsExpired(true);
+                }
+                throw err;
+            }
         },
         enabled: !!bookingId,
+        retry: false
     });
 
     // 2. Submit Review Mutation
@@ -51,7 +60,7 @@ export default function ReviewPage() {
         }
 
         submitMutation.mutate({
-            appointment_id: Number(bookingId),
+            appointment_id: booking.id,
             company_id: booking.company_id,
             branch_id: booking.branch_id,
             customer_id: booking.client_id,
@@ -66,6 +75,21 @@ export default function ReviewPage() {
         return (
             <div className="min-h-screen flex items-center justify-center bg-white">
                 <div className="animate-spin h-8 w-8 border-4 border-black border-t-transparent rounded-full" />
+            </div>
+        );
+    }
+
+    if (isExpired) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-neutral-50 p-6 text-center">
+                <Card className="max-w-md w-full p-8 rounded-[2.5rem] shadow-2xl border-none">
+                    <Clock className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+                    <CardTitle className="text-2xl font-black uppercase tracking-tight">Срок действия истек</CardTitle>
+                    <p className="text-neutral-500 mt-2">К сожалению, отзыв можно оставить только в течение 7 дней после визита.</p>
+                    <Button className="mt-8 bg-black text-white w-full h-14 rounded-2xl font-bold" onClick={() => router.push('/')}>
+                        На главную
+                    </Button>
+                </Card>
             </div>
         );
     }
@@ -101,88 +125,105 @@ export default function ReviewPage() {
         );
     }
 
-    const startTime = DateTime.fromISO(booking.start_time).setLocale('ru');
-
     return (
-        <div className="min-h-screen bg-neutral-50 py-16 px-6">
-            <div className="max-w-xl mx-auto">
-                <div className="text-center mb-12 space-y-2">
-                    <h1 className="text-5xl font-black tracking-tighter uppercase text-black">Как все прошло?</h1>
-                    <p className="text-lg text-neutral-400 font-bold uppercase tracking-widest text-[10px]">Поделитесь впечатлениями о визите в {booking.branch_name}</p>
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4 md:p-8">
+            <div className="max-w-2xl w-full space-y-8">
+                <div className="text-center space-y-4">
+                    <h1 className="text-4xl font-black uppercase tracking-tight text-neutral-900">Ваш отзыв</h1>
+                    <p className="text-neutral-500 font-medium">Поделитесь вашими впечатлениями от визита</p>
                 </div>
 
-                <Card className="border-none shadow-2xl shadow-neutral-200/50 rounded-[3rem] overflow-hidden bg-white">
-                    <div className="bg-black text-white p-10 flex items-center gap-6">
-                        <div className="h-16 w-16 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md shrink-0 border border-white/5 shadow-xl">
-                            <MessageSquare className="h-8 w-8 text-white" />
+                <Card className="border-none shadow-2xl rounded-[3rem] overflow-hidden bg-white">
+                    <div className="p-8 md:p-12 space-y-10">
+                        {/* Master Info */}
+                        <div className="flex flex-col items-center text-center space-y-4">
+                            <div className="h-24 w-24 bg-neutral-100 rounded-[36px] flex items-center justify-center overflow-hidden border-4 border-white shadow-xl relative">
+                                {booking.employee_avatar ? (
+                                    <img src={booking.employee_avatar} alt={booking.employee_name} className="h-full w-full object-cover" />
+                                ) : (
+                                    <User className="h-10 w-10 text-neutral-300" />
+                                )}
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-xl font-black uppercase tracking-tight text-neutral-900">{booking.employee_name}</h3>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Ваш мастер</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Ваш визит</p>
-                            <h3 className="text-2xl font-bold leading-none">{startTime.toFormat('d MMMM, HH:mm')}</h3>
-                        </div>
-                    </div>
 
-                    <CardContent className="p-10 space-y-12">
-                        {/* Rating Section */}
-                        <div className="space-y-6 text-center">
-                            <Label className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">Ваша оценка</Label>
-                            <div className="flex justify-center gap-2 sm:gap-4">
+                        {/* Services List */}
+                        <div className="bg-neutral-50 rounded-3xl p-6 space-y-4">
+                            <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Услуги</span>
+                                <span className="text-[10px] font-black text-neutral-900">
+                                    {DateTime.fromISO(booking.start_time).setLocale('ru').toFormat('d MMMM yyyy')}
+                                </span>
+                            </div>
+                            <div className="space-y-2">
+                                {booking.services?.map((s: any, i: number) => (
+                                    <div key={i} className="flex justify-between items-center">
+                                        <span className="text-sm font-bold text-neutral-800">{s.service_name || s.name}</span>
+                                        <span className="text-xs font-black text-neutral-900">{s.price} BYN</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Rating */}
+                        <div className="space-y-6">
+                            <div className="flex justify-center gap-2">
                                 {[1, 2, 3, 4, 5].map((star) => (
                                     <button
                                         key={star}
-                                        type="button"
-                                        className="transition-all active:scale-75"
+                                        className="transition-all duration-300 transform hover:scale-125 focus:outline-none"
                                         onMouseEnter={() => setHoveredRating(star)}
                                         onMouseLeave={() => setHoveredRating(0)}
                                         onClick={() => setRating(star)}
                                     >
                                         <Star
                                             className={cn(
-                                                "h-14 w-14 transition-all duration-300",
-                                                (hoveredRating || rating) >= star 
-                                                    ? "fill-[#F5FF82] text-[#F5FF82] drop-shadow-[0_0_15px_rgba(245,255,130,0.5)] scale-110" 
-                                                    : "text-neutral-100"
+                                                "h-12 w-12 transition-colors",
+                                                (hoveredRating || rating) >= star
+                                                    ? "fill-orange-500 text-orange-500"
+                                                    : "text-neutral-200"
                                             )}
                                         />
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-xs font-black uppercase tracking-widest text-neutral-400 h-5">
-                                {rating === 1 && "Ужасно"}
-                                {rating === 2 && "Плохо"}
-                                {rating === 3 && "Нормально"}
-                                {rating === 4 && "Хорошо"}
-                                {rating === 5 && "Отлично!"}
+                            <p className="text-center text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                {rating === 5 ? 'Идеально' : rating === 4 ? 'Хорошо' : rating === 3 ? 'Нормально' : rating === 2 ? 'Плохо' : rating === 1 ? 'Ужасно' : 'Ваша оценка'}
                             </p>
                         </div>
 
-                        {/* Comment Section */}
+                        {/* Comment */}
                         <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <Label className="text-[10px] font-black uppercase tracking-[0.2em] opacity-30">Комментарий</Label>
-                                <span className="text-[10px] font-black text-neutral-200">{comment.length}/500</span>
+                            <div className="relative group">
+                                <div className="absolute left-5 top-5">
+                                    <MessageSquare className="h-5 w-5 text-neutral-300 group-focus-within:text-orange-500 transition-colors" />
+                                </div>
+                                <Textarea
+                                    value={comment}
+                                    onChange={(e) => setComment(e.target.value)}
+                                    placeholder="Что вам особенно понравилось или что нам стоит улучшить?"
+                                    className="min-h-[150px] w-full p-6 pl-14 rounded-[2rem] border-none bg-neutral-50 focus:ring-2 focus:ring-orange-500/20 text-base font-medium placeholder:text-neutral-300 transition-all shadow-inner"
+                                />
                             </div>
-                            <Textarea
-                                placeholder="Что вам особенно понравилось?"
-                                className="min-h-[180px] bg-neutral-50 border-none rounded-[24px] p-8 text-lg focus-visible:ring-2 focus-visible:ring-neutral-100 placeholder:text-neutral-300 resize-none transition-all shadow-inner"
-                                value={comment}
-                                onChange={(e) => setComment(e.target.value.slice(0, 500))}
-                            />
                         </div>
 
-                        <Button 
-                            className="w-full h-20 bg-black text-white rounded-[24px] text-xl font-black uppercase tracking-widest hover:bg-neutral-800 transition-all disabled:opacity-20 disabled:grayscale shadow-2xl shadow-black/20"
+                        <Button
                             onClick={handleSubmit}
-                            disabled={rating === 0 || submitMutation.isPending}
+                            disabled={submitMutation.isPending || rating === 0}
+                            className="w-full h-20 bg-black text-white hover:bg-neutral-900 rounded-[2rem] text-lg font-black uppercase tracking-widest shadow-2xl shadow-neutral-200 transition-all active:scale-95 disabled:opacity-50"
                         >
-                            {submitMutation.isPending ? "Отправка..." : "Отправить"}
+                            {submitMutation.isPending ? 'Отправка...' : (
+                                <div className="flex items-center gap-3">
+                                    Отправить отзыв
+                                    <ArrowRight className="h-6 w-6" />
+                                </div>
+                            )}
                         </Button>
-                    </CardContent>
+                    </div>
                 </Card>
-
-                <p className="mt-10 text-center text-neutral-300 text-[10px] font-black uppercase tracking-widest px-12 leading-relaxed opacity-50">
-                    Ваш отзыв будет опубликован после проверки модератором.
-                </p>
             </div>
         </div>
     );

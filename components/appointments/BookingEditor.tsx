@@ -1,17 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DateTime } from 'luxon';
-import { 
-    X, 
-    ChevronRight, 
-    Plus, 
-    Clock, 
-    User, 
-    Phone, 
+import {
+    X,
+    ChevronRight,
+    Plus,
+    Clock,
+    User,
+    Phone,
     Search,
-    Check, 
-    CreditCard, 
-    Banknote, 
+    Check,
+    CreditCard,
+    Banknote,
     Smartphone,
     AlertCircle,
     Trash2,
@@ -202,7 +202,7 @@ export function BookingEditor({
         const rawPrice = formData.selectedServices.reduce((sum, s) => sum + (s.price || 0), 0);
         const discountAmount = Math.round(rawPrice * (formData.discount / 100));
         const finalPrice = rawPrice - discountAmount;
-        
+
         const duration = formData.selectedServices.reduce((acc, s) => acc + (s.duration_minutes || s.duration || s.service?.duration_minutes || s.service?.duration || 0), 0);
         setFormData(prev => {
             const newState = { ...prev, totalPrice: finalPrice };
@@ -244,12 +244,12 @@ export function BookingEditor({
     }, [showClientDropdown]);
 
     const handleSelectCustomer = (c: any) => {
-        setFormData({ 
-            ...formData, 
-            clientName: `${c.first_name} ${c.last_name || ''}`.trim(), 
-            clientPhone: c.phone || '', 
-            clientEmail: c.email || '', 
-            clientID: c.id || null, 
+        setFormData({
+            ...formData,
+            clientName: `${c.first_name} ${c.last_name || ''}`.trim(),
+            clientPhone: c.phone || '',
+            clientEmail: c.email || '',
+            clientID: c.id || null,
             isGuest: false,
             discount: c.discount || 0
         });
@@ -291,7 +291,7 @@ export function BookingEditor({
             total_price: formData.totalPrice,
             booking_source: 'admin',
             allow_overbooking: allowOverbooking,
-            services: formData.selectedServices.map(s => ({ 
+            services: formData.selectedServices.map(s => ({
                 service_id: s.service_id,
                 service_name: s.service?.name || '',
                 price: s.price,
@@ -306,7 +306,7 @@ export function BookingEditor({
         } catch (err: any) {
             const errorData = err.response?.data;
             const errorMsg = typeof errorData === 'string' ? errorData : errorData?.error || err.message;
-            
+
             if (errorMsg && errorMsg.includes("overbooking not allowed")) {
                 setWarningType('overbooking');
             } else {
@@ -319,29 +319,29 @@ export function BookingEditor({
         if (master) {
             const [startH, startM] = formData.startTime.split(':').map(Number);
             const [endH, endM] = formData.endTime.split(':').map(Number);
-            
+
             const newStart = formData.bookingDate.set({ hour: startH, minute: startM, second: 0, millisecond: 0 }).toMillis();
             const newEnd = formData.bookingDate.set({ hour: endH, minute: endM, second: 0, millisecond: 0 }).toMillis();
-                
+
             const hasOverlap = appointments.some(app => {
                 if (app.employee_id !== master.id || app.status === 'cancelled') return false;
                 if (mode === 'edit' && selectedAppointment && app.id === selectedAppointment.id) return false;
-                
+
                 const appStart = DateTime.fromISO(app.start_time).setZone(timezone).toMillis();
                 const appEnd = DateTime.fromISO(app.end_time).setZone(timezone).toMillis();
-                
+
                 return newStart < appEnd && newEnd > appStart;
             });
-                
-            if (hasOverlap) { 
-                setWarningType('overbooking'); 
-                return; 
+
+            if (hasOverlap) {
+                setWarningType('overbooking');
+                return;
             }
 
             if (shifts) {
                 const shiftDate = formData.bookingDate.toISODate();
                 const shift = shifts.find((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
-                
+
                 let hasWorkingHours = false;
                 let shiftStartH = 0, shiftStartM = 0;
                 let shiftEndH = 24, shiftEndM = 0;
@@ -368,7 +368,7 @@ export function BookingEditor({
                     const reqEndTotal = endH * 60 + endM;
                     const shiftStartTotal = shiftStartH * 60 + shiftStartM;
                     const shiftEndTotal = shiftEndH * 60 + shiftEndM;
-                    
+
                     if (reqStartTotal < shiftStartTotal || reqEndTotal > shiftEndTotal) {
                         setWarningType('out_of_shift');
                         return;
@@ -406,7 +406,7 @@ export function BookingEditor({
 
     const ClientDropdown = ({ field }: { field: 'name' | 'phone' }) => {
         if (!showClientDropdown || activeSearchField !== field) return null;
-        
+
         const hasResults = Array.isArray(searchResults) && searchResults.length > 0;
         const shouldShow = isSearchingClient || hasResults || (activeSearchField === field);
 
@@ -428,7 +428,7 @@ export function BookingEditor({
                                 <ChevronRight className="h-4 w-4 text-neutral-200 group-hover:text-neutral-900 transition-all group-hover:translate-x-1" />
                             </div>
                         ))}
-                        <div 
+                        <div
                             onClick={handleCreateNewClient}
                             className="p-4 hover:bg-neutral-50 cursor-pointer flex items-center gap-3 text-neutral-600 transition-colors group"
                         >
@@ -452,7 +452,7 @@ export function BookingEditor({
             <DialogContent showCloseButton={false} className="sm:max-w-[1400px] w-[98vw] p-0 overflow-hidden bg-white rounded-[1.5rem] border-none shadow-[0_32px_64px_-16px_rgba(0,0,0,0.15)] h-[92vh] flex flex-col">
                 <DialogTitle className="sr-only">Редактор записи</DialogTitle>
                 <DialogDescription className="sr-only">Управление деталями бронирования, услугами и клиентом</DialogDescription>
-                
+
                 <div className="h-16 border-b border-neutral-100 flex items-center justify-between px-6 shrink-0">
                     <div className="flex gap-1.5 p-1 bg-neutral-100 rounded-xl">
                         {[
@@ -463,9 +463,9 @@ export function BookingEditor({
                         ].map(s => {
                             const isActive = formData.status === s.id || (s.id === 'arrived' && formData.status === 'finished');
                             return (
-                                <button 
-                                    key={s.id} 
-                                    onClick={() => setFormData({...formData, status: s.id})} 
+                                <button
+                                    key={s.id}
+                                    onClick={() => setFormData({...formData, status: s.id})}
                                     className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${isActive ? s.active : 'text-neutral-400 hover:text-neutral-600'}`}>
                                     {s.label}
                                 </button>
@@ -569,9 +569,9 @@ export function BookingEditor({
                     <div className="p-6 flex flex-col gap-8 overflow-y-auto custom-scrollbar bg-white client-search-container">
                         <div className="flex items-center justify-between px-1 mb-2">
                             <h4 className="text-[11px] font-black uppercase text-neutral-400 tracking-[0.2em]">Клиент</h4>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
+                            <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => setIsHistoryModalOpen(true)}
                                 className="h-8 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-900 rounded-lg text-[10px] font-black uppercase tracking-widest gap-2"
                             >
@@ -583,7 +583,7 @@ export function BookingEditor({
                         <div className="flex-1 flex flex-col min-h-0 space-y-8 animate-in fade-in duration-500">
                             <div className="space-y-6">
                                 <div className="flex items-center justify-between px-1">
-                                
+
                                     {formData.isGuest && <Badge className="bg-neutral-100 text-neutral-400 border-none text-[9px] font-black uppercase">Гость</Badge>}
                                 </div>
                                 <div className="space-y-4">
@@ -591,12 +591,12 @@ export function BookingEditor({
                                         <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">ФИО / Поиск</Label>
                                         <div className="relative">
                                             <User className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
-                                            <Input 
-                                                value={formData.clientName} 
-                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientName: val}); setActiveSearchField('name'); setShowClientDropdown(true); }} 
-                                                onFocus={() => { setActiveSearchField('name'); setShowClientDropdown(true); }} 
-                                                placeholder="Введите имя..." 
-                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" 
+                                            <Input
+                                                value={formData.clientName}
+                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientName: val}); setActiveSearchField('name'); setShowClientDropdown(true); }}
+                                                onFocus={() => { setActiveSearchField('name'); setShowClientDropdown(true); }}
+                                                placeholder="Введите имя..."
+                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm"
                                             />
                                             <ClientDropdown field="name" />
                                         </div>
@@ -605,12 +605,12 @@ export function BookingEditor({
                                         <Label className="text-[10px] font-black uppercase text-neutral-400 pl-1">Телефон</Label>
                                         <div className="relative">
                                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" />
-                                            <Input 
-                                                value={formData.clientPhone} 
-                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientPhone: val}); setActiveSearchField('phone'); setShowClientDropdown(true); }} 
-                                                onFocus={() => { setActiveSearchField('phone'); setShowClientDropdown(true); }} 
-                                                placeholder="+375 •• •••-••-••" 
-                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm" 
+                                            <Input
+                                                value={formData.clientPhone}
+                                                onChange={e => { const val = e.target.value; setFormData({...formData, clientPhone: val}); setActiveSearchField('phone'); setShowClientDropdown(true); }}
+                                                onFocus={() => { setActiveSearchField('phone'); setShowClientDropdown(true); }}
+                                                placeholder="+375 •• •••-••-••"
+                                                className="pl-11 h-12 rounded-2xl border-neutral-100 focus:ring-1 focus:ring-neutral-200 text-sm font-bold shadow-sm"
                                             />
                                             <ClientDropdown field="phone" />
                                         </div>
@@ -651,7 +651,7 @@ export function BookingEditor({
                                                             <span className="text-[10px] font-bold text-neutral-900">{DateTime.fromISO(v.start_time).setLocale('ru').toFormat('d MMM yyyy, HH:mm')}</span>
                                                             <Badge className={cn(
                                                                 "text-[7px] font-black uppercase px-1 py-0 rounded",
-                                                                v.status === 'finished' ? "bg-emerald-50 text-emerald-600" : 
+                                                                v.status === 'finished' ? "bg-emerald-50 text-emerald-600" :
                                                                 v.status === 'no_show' ? "bg-red-50 text-red-600" : "bg-neutral-100 text-neutral-400"
                                                             )}>
                                                                 {v.status}
@@ -695,8 +695,8 @@ export function BookingEditor({
                             {warningType === 'overbooking' ? 'Пересечение времени' : 'Вне рабочего времени'}
                         </DialogTitle>
                         <DialogDescription className="text-sm font-medium text-neutral-500 leading-relaxed px-4">
-                            {warningType === 'overbooking' 
-                                ? 'На это время уже есть запись. Создать овербукинг?' 
+                            {warningType === 'overbooking'
+                                ? 'На это время уже есть запись. Создать овербукинг?'
                                 : 'Выбранное время выходит за рамки графика работы мастера. Продолжить создание записи?'}
                         </DialogDescription>
                     </div>
@@ -716,7 +716,7 @@ export function BookingEditor({
                 </div>
                 <DialogTitle className="sr-only">История изменений записи</DialogTitle>
                 <DialogDescription className="sr-only">Логи всех действий с текущей записью</DialogDescription>
-                
+
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
                     <div className="space-y-6 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-neutral-100">
                         {historyLogs.length > 0 ? historyLogs.map((log: any, i: number) => (
@@ -727,7 +727,7 @@ export function BookingEditor({
                                 <div className="flex flex-col gap-1">
                                     <div className="flex items-center justify-between">
                                         <span className="text-[9px] font-black uppercase tracking-widest text-neutral-900">
-                                            {log.action === 'created' ? 'Запись создана' : 
+                                            {log.action === 'created' ? 'Запись создана' :
                                                 log.action === 'status_changed' ? 'Статус изменен' : 'Запись обновлена'}
                                         </span>
                                         <span className="text-[8px] font-bold text-neutral-400">

@@ -649,6 +649,34 @@ export function BookingWidget({
                                     </div>
                                 );
                             })}
+                            
+                            {/* Uncategorized services */}
+                            {(() => {
+                                const uncategorized = (state.availableServices || []).filter((s: any) => !s.category_id);
+                                if (uncategorized.length === 0) return null;
+                                return (
+                                    <div className="space-y-3">
+                                        {categories.length > 0 && <h3 className="text-[10px] font-black uppercase opacity-30 pl-2 tracking-widest">{strings.services}</h3>}
+                                        {uncategorized.map((svc: any) => {
+                                            const isSelected = state.selectedServices.some(s => s.id === svc.id);
+                                            return (
+                                                <div key={svc.id} onClick={() => svc.canDo && state.handleSelectService(svc)} className={cn(
+                                                    "p-5 border-2 rounded-[24px] cursor-pointer flex items-center justify-between transition-all shadow-sm", 
+                                                    isSelected ? "bg-neutral-50 border-black" : theme === 'dark' ? "bg-neutral-800 border-neutral-700" : "bg-white border-neutral-100", 
+                                                    !svc.canDo && "opacity-40 grayscale cursor-not-allowed"
+                                                )} style={isSelected ? { borderColor: accentColor } : {}}>
+                                                    <div className="flex flex-col gap-1"><span className={cn("font-bold", isSelected ? "text-neutral-900" : themeClasses.textMain)}>{svc.name}</span><span className="text-xs font-medium opacity-40">{svc.canDo ? `${state.getSvcDuration(svc, state.selectedEmployee?.id)} ${strings.minutes} • ${svc.price} ${strings.price}` : svc.reason}</span></div>
+                                                    {isSelected ? (
+                                                        <div className="h-10 w-10 text-white rounded-2xl flex items-center justify-center shadow-inner" style={{ backgroundColor: accentColor }}><Check className="h-5 w-5" style={{ color: accentTextColor }} /></div>
+                                                    ) : (
+                                                        <div className={cn("h-10 w-10 rounded-2xl flex items-center justify-center", theme === 'dark' ? "bg-neutral-700/50 text-neutral-500" : "bg-neutral-50 text-neutral-400")}><Plus className="h-5 w-5" /></div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
 
