@@ -28,18 +28,31 @@ export function EmployeeAvailableSlots({
     selectedSlotTime, 
     duration = 30, 
     step = 30, 
-    timezone = 'Europe/Minsk',
+    timezone: rawTimezone,
     accentColor = '#000000',
     accentTextColor = '#ffffff'
 }: Props) {
+    // Безопасная таймзона с дефолтом
+    const timezone = useMemo(() => {
+        if (!rawTimezone) return 'Europe/Minsk';
+        try {
+            // Проверка на валидность таймзоны
+            const d = DateTime.now().setZone(rawTimezone);
+            return d.isValid ? rawTimezone : 'Europe/Minsk';
+        } catch (e) {
+            return 'Europe/Minsk';
+        }
+    }, [rawTimezone]);
 
     // ФИКС ПЕРЕКЛЮЧЕНИЯ КАЛЕНДАРЯ: Безопасное получение локальной даты с учетом часового пояса
     useEffect(() => {
         if (selectedSlotTime) {
-            // Конвертируем сохраненное время в нужную таймзону и берем из нее дату
-            const slotDateStr = DateTime.fromISO(selectedSlotTime).setZone(timezone).toISODate();
-            if (slotDateStr && slotDateStr !== selectedDate) {
-                onDateChange(slotDateStr);
+            const d = DateTime.fromISO(selectedSlotTime).setZone(timezone);
+            if (d.isValid) {
+                const slotDateStr = d.toISODate();
+                if (slotDateStr && slotDateStr !== selectedDate) {
+                    onDateChange(slotDateStr);
+                }
             }
         }
     }, [selectedSlotTime, selectedDate, onDateChange, timezone]);
@@ -47,8 +60,9 @@ export function EmployeeAvailableSlots({
     const { data: availableDates = [] } = useQuery({
         queryKey: ['availableDates', employeeIds, duration, step, timezone],
         queryFn: async () => {
-            const start = DateTime.now().setZone(timezone).toISODate();
-            const end = DateTime.now().setZone(timezone).plus({ days: 30 }).toISODate();
+            const now = DateTime.now().setZone(timezone);
+            const start = now.isValid ? now.toISODate() : DateTime.now().toISODate();
+            const end = now.isValid ? now.plus({ days: 30 }).toISODate() : DateTime.now().plus({ days: 30 }).toISODate();
             const res = await api.get('/available-dates', { params: { employee_ids: employeeIds, duration, step, start, end, timezone } });
             return res.data || [];
         },
@@ -58,6 +72,7 @@ export function EmployeeAvailableSlots({
     const { data: slots = [], isLoading: isLoadingSlots } = useQuery({
         queryKey: ['slots', employeeIds, selectedDate, duration, step, timezone],
         queryFn: async () => {
+            if (!selectedDate) return [];
             const res = await api.get('/slots', { params: { employee_ids: employeeIds, date: selectedDate, duration, step, timezone } });
             return res.data || [];
         },
@@ -67,10 +82,10 @@ export function EmployeeAvailableSlots({
     const uniqueSlots = useMemo(() => {
         const seen = new Set();
         return slots.filter((slot: any) => {
-            if (seen.has(slot.start_time)) return false;
+            if (!slot?.start_time || seen.has(slot.start_time)) return false;
             seen.add(slot.start_time);
             return true;
-        }).sort((a: any, b: any) => a.start_time.localeCompare(b.start_time));
+        }).sort((a: any, b: any) => (a.start_time || '').localeCompare(b.start_time || ''));
     }, [slots]);
 
     return (
@@ -78,7 +93,10 @@ export function EmployeeAvailableSlots({
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
                 {Array.from({ length: 14 }).map((_, i) => {
                     const d = DateTime.now().setZone(timezone).plus({ days: i });
-                    const dateStr = d.toISODate()!;
+                    if (!d.isValid) return null;
+                    const dateStr = d.toISODate();
+                    if (!dateStr) return null;
+                    
                     const isAvailable = availableDates.some((ad: string) => ad.startsWith(dateStr));
                     const isSelected = selectedDate === dateStr;
                     return (

@@ -14,6 +14,7 @@ interface BranchContextType {
     selectedBranchID: string;
     setSelectedBranchID: (id: string) => void;
     branches: Branch[];
+    company: any;
     isLoading: boolean;
 }
 
@@ -78,7 +79,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     }, [branches, selectedBranchID]);
 
     return (
-        <BranchContext.Provider value={{ selectedBranchID, setSelectedBranchID, branches, isLoading }}>
+        <BranchContext.Provider value={{ selectedBranchID, setSelectedBranchID, branches, company, isLoading }}>
             {children}
         </BranchContext.Provider>
     );

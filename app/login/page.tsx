@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { api, logout } from '@/lib/api';
 
 const loginSchema = z.object({
     email: z.string().email('Некорректный email'),
@@ -31,6 +31,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
     const router = useRouter();
+    const queryClient = useQueryClient();
     const form = useForm<LoginFormValues>({
         resolver: zodResolver(loginSchema),
         defaultValues: {
@@ -41,6 +42,11 @@ export default function LoginPage() {
 
     const mutation = useMutation({
         mutationFn: async (values: LoginFormValues) => {
+            // Ensure clean slate
+            Cookies.remove('token');
+            localStorage.clear();
+            queryClient.clear();
+
             const response = await api.post('/auth/login', values);
             return response.data;
         },

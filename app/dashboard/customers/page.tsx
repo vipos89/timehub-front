@@ -44,7 +44,7 @@ import {
 
 export default function CustomersPage() {
     const queryClient = useQueryClient();
-    const { selectedBranchID } = useBranch();
+    const { selectedBranchID, company } = useBranch();
     const [searchQuery, setSearchQuery] = useState('');
     const [page, setPage] = useState(1);
     const [pageSize] = useState(20);
@@ -190,6 +190,11 @@ const { data, isLoading: isLoadingCustomers } = useQuery({
             email: customer.email || '',
             phone: customer.phone || '',
             notes: customer.notes || '',
+            birthday: customer.birthday ? format(new Date(customer.birthday), 'yyyy-MM-dd') : '',
+            gender: customer.gender || '',
+            category: customer.category || '',
+            discount: customer.discount || 0,
+            is_blocked: customer.is_blocked || false,
         });
         setIsModalOpen(true);
     };
@@ -454,8 +459,7 @@ const { data, isLoading: isLoadingCustomers } = useQuery({
                                     <div className="space-y-6 pt-6 border-t border-neutral-100">
                                         <h4 className="text-[10px] font-black uppercase text-neutral-900 tracking-widest italic">Данные по сети</h4>
                                         <div className="space-y-5">
-                                            <p className="text-xs font-black text-neutral-400 italic uppercase tracking-wider">BeardClub</p>
-                                            
+                                            <p className="text-xs font-black text-neutral-400 italic uppercase tracking-wider">{company?.name || 'TimeHub'}</p>                                            
                                             <div className="grid grid-cols-2 gap-x-4 gap-y-6">
                                                 <div className="space-y-1">
                                                     <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-widest italic">Последний визит</span>

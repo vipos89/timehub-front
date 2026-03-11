@@ -22,11 +22,16 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            Cookies.remove('token');
-            if (typeof window !== 'undefined') {
-                window.location.href = '/login';
-            }
+            logout();
         }
         return Promise.reject(error);
     }
 );
+
+export const logout = () => {
+    Cookies.remove('token');
+    if (typeof window !== 'undefined') {
+        localStorage.clear();
+        window.location.href = '/login';
+    }
+};

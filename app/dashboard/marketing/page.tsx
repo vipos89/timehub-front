@@ -135,7 +135,7 @@ export default function MarketingPage() {
                                                 type="category" 
                                                 axisLine={false} 
                                                 tickLine={false}
-                                                tick={{fontSize: 10, fontWeight: 'black', textTransform: 'uppercase'}}
+                                                tick={{fontSize: 10, fontWeight: 'black'}}
                                                 width={100}
                                             />
                                             <Tooltip 
