@@ -44,6 +44,7 @@ export default function SchedulePage() {
     const [isEditing, setIsEditing] = useState(false);
     const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [newShift, setNewShift] = useState({ start: '09:00', end: '21:00', shiftType: 'work' });
+    const [breaks, setBreaks] = useState<Array<{ start: string; end: string }>>([]);
     const [generatorData, setGeneratorData] = useState({
         employeeID: '',
         startDate: DateTime.now().toISODate()!,
@@ -144,10 +145,13 @@ export default function SchedulePage() {
     }, [currentDate, viewMode]);
 
     const getShiftForMaster = (empID: number, day: DateTime) => {
-        return shifts?.find((s: any) => {
+        const dayShifts = shifts?.filter((s: any) => {
             const shiftDate = DateTime.fromISO(s.date);
             return s.employee_id === empID && shiftDate.hasSame(day, 'day');
-        });
+        }) || [];
+        
+        // Prioritize 'work' shift, then others, then first available
+        return dayShifts.find((s: any) => s.shift_type === 'work') || dayShifts.find((s: any) => s.shift_type !== 'break') || dayShifts[0];
     };
 
     const handleDateChange = (direction: number) => {
@@ -161,10 +165,31 @@ export default function SchedulePage() {
     const handleCellClick = (empID: number, day: DateTime) => {
         const dateStr = day.toISODate()!;
         const isSelected = selectedCells.some(c => c.empID === empID && c.date === dateStr);
+        
         if (isSelected) {
             setSelectedCells(prev => prev.filter(c => !(c.empID === empID && c.date === dateStr)));
         } else {
-            setSelectedCells(prev => [...prev, { empID, date: dateStr }]);
+            const newSelection = [...selectedCells, { empID, date: dateStr }];
+            setSelectedCells(newSelection);
+
+            // If it's the first cell selected, or we want to update state based on selection
+            if (newSelection.length === 1) {
+                const dayShifts = shifts?.filter((s: any) => s.employee_id === empID && DateTime.fromISO(s.date).hasSame(day, 'day')) || [];
+                const workShift = dayShifts.find((s: any) => s.shift_type === 'work' || !s.shift_type);
+                const breakShifts = dayShifts.filter((s: any) => s.shift_type === 'break');
+
+                if (workShift) {
+                    setNewShift({
+                        start: workShift.start_time,
+                        end: workShift.end_time,
+                        shiftType: workShift.shift_type || 'work'
+                    });
+                } else {
+                    setNewShift({ start: '09:00', end: '21:00', shiftType: 'work' });
+                }
+
+                setBreaks(breakShifts.map((b: any) => ({ start: b.start_time, end: b.end_time })));
+            }
         }
     };
 
@@ -192,14 +217,35 @@ export default function SchedulePage() {
 
     const handleSaveShift = () => {
         if (selectedCells.length === 0) return;
-        const payload = selectedCells.map(c => ({
-            employee_id: c.empID,
-            branch_id: parseInt(selectedBranchID),
-            date: c.date + 'T00:00:00Z',
-            start_time: newShift.start,
-            end_time: newShift.end,
-            shift_type: newShift.shiftType,
-        }));
+        const payload: any[] = [];
+        
+        selectedCells.forEach(c => {
+            // Add main shift
+            payload.push({
+                employee_id: c.empID,
+                branch_id: parseInt(selectedBranchID),
+                date: c.date + 'T00:00:00Z',
+                start_time: newShift.start,
+                end_time: newShift.end,
+                shift_type: newShift.shiftType,
+            });
+
+            // If it's a work day, add breaks
+            if (newShift.shiftType === 'work') {
+                breaks.forEach(b => {
+                    if (b.start && b.end) {
+                        payload.push({
+                            employee_id: c.empID,
+                            branch_id: parseInt(selectedBranchID),
+                            date: c.date + 'T00:00:00Z',
+                            start_time: b.start,
+                            end_time: b.end,
+                            shift_type: 'break',
+                        });
+                    }
+                });
+            }
+        });
         saveShiftMutation.mutate(payload);
     };
 
@@ -415,17 +461,29 @@ export default function SchedulePage() {
                                     </td>
                                     <td className="border-b border-neutral-100 p-4 text-center">
                                         {(() => {
-                                            const empShifts = shifts?.filter((s: any) => s.employee_id === emp.id && s.shift_type === 'work') || [];
-                                            const totalHours = empShifts.reduce((acc: number, s: any) => {
-                                                const start = DateTime.fromFormat(s.start_time, 'HH:mm');
-                                                const end = DateTime.fromFormat(s.end_time, 'HH:mm');
-                                                // Subtract 1 hour for lunch
-                                                return acc + Math.max(0, end.diff(start, 'hours').hours - 1);
-                                            }, 0);
+                                            const empDayShifts = shifts?.filter((s: any) => s.employee_id === emp.id) || [];
+                                            const workShifts = empDayShifts.filter((s: any) => s.shift_type === 'work');
+                                            const breakShifts = empDayShifts.filter((s: any) => s.shift_type === 'break');
+
+                                            let totalMinutes = 0;
+                                            workShifts.forEach((ws: any) => {
+                                                const start = DateTime.fromFormat(ws.start_time, 'HH:mm');
+                                                const end = DateTime.fromFormat(ws.end_time, 'HH:mm');
+                                                totalMinutes += end.diff(start, 'minutes').minutes;
+                                            });
+
+                                            breakShifts.forEach((bs: any) => {
+                                                const start = DateTime.fromFormat(bs.start_time, 'HH:mm');
+                                                const end = DateTime.fromFormat(bs.end_time, 'HH:mm');
+                                                totalMinutes -= end.diff(start, 'minutes').minutes;
+                                            });
+
+                                            const totalHours = Math.max(0, totalMinutes / 60);
+                                            
                                             return (
                                                 <div className="text-neutral-500 text-sm">
-                                                    <div className="flex items-center justify-center gap-1 font-bold">{totalHours.toFixed(0)} ч.</div>
-                                                    <div className="text-[10px]">{empShifts.length} смен</div>
+                                                    <div className="flex items-center justify-center gap-1 font-bold">{totalHours.toFixed(1)} ч.</div>
+                                                    <div className="text-[10px]">{workShifts.length} смен</div>
                                                 </div>
                                             );
                                         })()}
@@ -446,9 +504,13 @@ export default function SchedulePage() {
                                                 )}
                                             >
                                                 {shift ? (() => {
+                                                    const dayShifts = shifts?.filter((s: any) => s.employee_id === emp.id && DateTime.fromISO(s.date).hasSame(day, 'day')) || [];
                                                     const shiftType = shift.shift_type || (shift.is_day_off ? 'day_off' : 'work');
+                                                    const breakCount = dayShifts.filter((s: any) => s.shift_type === 'break').length;
+
                                                     const typeConfig = {
                                                         work: { bg: 'bg-green-100/80', border: 'border-green-200', text: 'text-green-700', label: '' },
+                                                        break: { bg: 'bg-neutral-200/80', border: 'border-neutral-300', text: 'text-neutral-600', label: 'ПЕР' },
                                                         day_off: { bg: 'bg-neutral-100', border: 'border-neutral-200', text: 'text-neutral-400', label: 'ВЫХ' },
                                                         sick_leave: { bg: 'bg-yellow-100/80', border: 'border-yellow-200', text: 'text-yellow-700', label: 'Б/Л' },
                                                         vacation: { bg: 'bg-blue-100/80', border: 'border-blue-200', text: 'text-blue-700', label: 'ОТП' },
@@ -460,12 +522,17 @@ export default function SchedulePage() {
                                                     return (
                                                         <div className={cn(
                                                             config.bg, "border", config.border, 
-                                                            "rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm min-h-[40px]"
+                                                            "rounded-md p-1.5 flex flex-col items-center justify-center animate-in zoom-in-95 duration-200 shadow-sm min-h-[40px] relative"
                                                         )}>
-                                                            {shiftType === 'work' ? (
+                                                            {['work', 'break'].includes(shiftType) ? (
                                                                 <>
                                                                     <span className={cn("text-[10px] font-bold leading-tight", config.text)}>{shift.start_time}</span>
                                                                     <span className={cn("text-[10px] font-bold leading-tight", config.text)}>{shift.end_time}</span>
+                                                                    {shiftType === 'work' && breakCount > 0 && (
+                                                                        <div className="absolute -top-1 -right-1 flex items-center justify-center h-3 w-3 bg-neutral-900 rounded-full border border-white shadow-sm">
+                                                                            <span className="text-[7px] font-black text-white">{breakCount}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </>
                                                             ) : (
                                                                 <span className={cn("text-[10px] font-black leading-tight", config.text)}>{config.label}</span>
@@ -507,6 +574,7 @@ export default function SchedulePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="work">Рабочий день</SelectItem>
+                                    <SelectItem value="break">Перерыв</SelectItem>
                                     <SelectItem value="day_off">Выходной</SelectItem>
                                     <SelectItem value="sick_leave">Больничный</SelectItem>
                                     <SelectItem value="vacation">Отпуск</SelectItem>
@@ -515,7 +583,7 @@ export default function SchedulePage() {
                                 </SelectContent>
                             </Select>
                         </div>
-                        {newShift.shiftType === 'work' && (
+                        {['work', 'break'].includes(newShift.shiftType) && (
                             <>
                                 <div className="grid grid-cols-4 items-center gap-4">
                                     <Label htmlFor="start" className="text-right">Начало</Label>
@@ -539,6 +607,57 @@ export default function SchedulePage() {
                                 </div>
                             </>
                         )}
+
+                        {newShift.shiftType === 'work' && (
+                            <div className="space-y-4 pt-4 border-t border-neutral-100">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Перерывы</Label>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        onClick={() => setBreaks([...breaks, { start: '13:00', end: '14:00' }])}
+                                        className="h-7 text-[10px] font-bold uppercase text-neutral-900 bg-neutral-100 rounded-lg hover:bg-neutral-200"
+                                    >
+                                        + Добавить
+                                    </Button>
+                                </div>
+                                {breaks.map((b, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 group animate-in slide-in-from-left-2">
+                                        <div className="grid grid-cols-2 gap-2 flex-1">
+                                            <Input 
+                                                type="time" 
+                                                value={b.start} 
+                                                onChange={(e) => {
+                                                    const newBreaks = [...breaks];
+                                                    newBreaks[idx].start = e.target.value;
+                                                    setBreaks(newBreaks);
+                                                }}
+                                                className="h-9 text-xs"
+                                            />
+                                            <Input 
+                                                type="time" 
+                                                value={b.end} 
+                                                onChange={(e) => {
+                                                    const newBreaks = [...breaks];
+                                                    newBreaks[idx].end = e.target.value;
+                                                    setBreaks(newBreaks);
+                                                }}
+                                                className="h-9 text-xs"
+                                            />
+                                        </div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => setBreaks(breaks.filter((_, i) => i !== idx))}
+                                            className="h-9 w-9 text-neutral-300 hover:text-red-500 transition-colors"
+                                        >
+                                            <Save className="h-4 w-4 rotate-45" /> {/* Use close-like icon or generic */}
+                                        </Button>
+                                    </div>
+                                ))}
+                                {breaks.length === 0 && <p className="text-[10px] text-neutral-300 italic text-center py-2">Нет запланированных перерывов</p>}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>Отмена</Button>
@@ -555,7 +674,7 @@ export default function SchedulePage() {
                     <span className="font-bold text-sm">Выбрано: {selectedCells.length}</span>
                     <div className="h-6 w-px bg-white/20" />
                     <div className="flex gap-2">
-                        <Button size="sm" onClick={() => { setNewShift({ start: '09:00', end: '21:00', shiftType: 'work' }); setIsEditing(true); }} className="bg-white text-black hover:bg-neutral-100 font-bold rounded-xl h-9">Настроить</Button>
+                        <Button size="sm" onClick={() => setIsEditing(true)} className="bg-white text-black hover:bg-neutral-100 font-bold rounded-xl h-9">Настроить</Button>
                         <Button size="sm" onClick={() => handleBulkAction('day_off')} className="bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl h-9 border-none">Выходной</Button>
                         <Button size="sm" onClick={() => handleBulkAction('sick_leave')} className="bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl h-9 border-none">Больничный</Button>
                         <Button size="sm" variant="ghost" onClick={() => setSelectedCells([])} className="hover:bg-white/10 text-white font-bold rounded-xl h-9">Отмена</Button>

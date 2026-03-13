@@ -15,7 +15,121 @@ import { BookingEditor } from '@/components/appointments/BookingEditor';
 import { useWebSocket } from '@/hooks/use-web-socket';
 import { cn } from '@/lib/utils';
 
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+    DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+// DnD Kit
+import { 
+    DndContext, 
+    DragOverlay, 
+    useSensor, 
+    useSensors, 
+    PointerSensor, 
+    MouseSensor,
+    TouchSensor,
+    DragEndEvent,
+    DragStartEvent,
+    useDraggable,
+    useDroppable
+} from '@dnd-kit/core';
+import { restrictToFirstScrollableAncestor, restrictToWindowEdges } from '@dnd-kit/modifiers';
+
 const HOUR_HEIGHT = 80;
+
+function DraggableAppointment({ app, style, serviceMap, timezone, onClick, isDragging }: any) {
+    const { attributes, listeners, setNodeRef, transform } = useDraggable({
+        id: `app-${app.id}`,
+        data: { type: 'appointment', app }
+    });
+
+    const dndStyle = transform ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        zIndex: 50,
+        opacity: isDragging ? 0.5 : 1,
+    } : undefined;
+
+    return (
+        <div ref={setNodeRef} {...listeners} {...attributes}
+             onClick={onClick} 
+             style={{ ...style, ...dndStyle }} 
+             className={cn("absolute left-1.5 right-1.5 rounded-xl p-2.5 border-l-[6px] shadow-lg shadow-neutral-200/20 cursor-grab active:cursor-grabbing transition-all hover:scale-[1.03] hover:z-20 group overflow-hidden", 
+                 app.status === 'confirmed' ? "bg-emerald-50 border-emerald-500" : (app.status === 'arrived' || app.status === 'finished') ? "bg-blue-50 border-blue-500" : app.status === 'no_show' ? "bg-red-50 border-red-500" : "bg-amber-50 border-amber-500",
+                 isDragging && "scale-105 shadow-2xl ring-2 ring-black/5")}>
+            <div className="flex flex-col h-full relative">
+                <div className="absolute top-0 right-0 flex items-center gap-1">
+                    {app.is_new_client && (
+                        <div className="bg-[#F5FF82] text-black px-1 rounded-[4px] flex items-center gap-0.5 animate-pulse">
+                            <Sparkles className="w-2 h-2" />
+                            <span className="text-[7px] font-black uppercase">New</span>
+                        </div>
+                    )}
+                    {app.booking_source === 'widget' ? (
+                        <Globe className="w-2.5 h-2.5 text-neutral-400" />
+                    ) : (
+                        <User className="w-2.5 h-2.5 text-neutral-400" />
+                    )}
+                </div>
+
+                <div className="flex justify-between items-start mb-1">
+                    <span className="text-[10px] font-black text-neutral-900/40 uppercase tracking-tighter">{DateTime.fromISO(app.start_time.includes('T') ? app.start_time : app.start_time.replace(' ', 'T')).setZone(timezone).toFormat('HH:mm')}</span>
+                </div>
+                <div className="text-[11px] font-black text-neutral-900 leading-none truncate mb-1 pr-10">{app.client_first_name || 'Без имени'}</div>
+                <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-tighter truncate">{(app.services || []).map((s: any) => serviceMap[s.service_id] || 'Услуга').join(', ')}</div>
+                {app.comment && <div className="mt-1.5 text-[8px] italic text-neutral-400 truncate border-t border-black/5 pt-1">{app.comment}</div>}
+            </div>
+        </div>
+    );
+}
+
+function DroppableColumn({ emp, children, onColumnClick, renderNonWorkingHours, currentTimeMarker, onShiftEdit }: any) {
+    const { setNodeRef, isOver } = useDroppable({
+        id: `emp-${emp.id}`,
+        data: { type: 'column', empID: emp.id }
+    });
+
+    return (
+        <div ref={setNodeRef} className={cn("min-w-[200px] border-r border-neutral-100 relative group flex flex-col flex-1", isOver && "bg-neutral-50/50")}>
+            <div className="h-12 border-b bg-white/90 backdrop-blur-md flex items-center justify-center sticky top-0 z-20 px-4">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1.5 rounded-lg transition-colors">
+                            <Avatar className="h-7 w-7 ring-2 ring-neutral-100 shadow-sm"><AvatarImage src={emp.avatar_url} /><AvatarFallback className="text-[10px] font-bold">{emp.name?.[0]}</AvatarFallback></Avatar>
+                            <span className="text-[11px] font-black truncate text-neutral-800 uppercase tracking-tight">{emp.name}</span>
+                        </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56 rounded-xl shadow-xl border-neutral-100">
+                        <div className="px-2 py-1.5 text-[9px] font-black uppercase text-neutral-400 tracking-widest">Управление сменой</div>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => onShiftEdit(emp.id)} className="rounded-lg gap-2 cursor-pointer">
+                            <CalendarIcon className="w-3.5 h-3.5" />
+                            <span className="text-xs font-bold">Настроить график</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+            <div className="relative flex-1 bg-[linear-gradient(to_bottom,transparent_79px,#f5f5f5_79px,#f5f5f5_80px)] bg-[size:100%_80px]"
+                 onClick={(e) => onColumnClick(e, emp.id)}>
+                {renderNonWorkingHours(emp.id)}
+                {currentTimeMarker}
+                {children}
+            </div>
+        </div>
+    );
+}
 
 export default function AppointmentsPage() {
     const { selectedBranchID, branches } = useBranch();
@@ -51,6 +165,15 @@ export default function AppointmentsPage() {
     const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
     const [selectedSlot, setSelectedSlot] = useState<{ empID: number; time: DateTime } | null>(null);
     const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
+
+    // Quick Shift Editing States
+    const [isShiftDialogOpen, setIsShiftDialogOpen] = useState(false);
+    const [quickShiftData, setQuickShiftData] = useState({ 
+        empID: 0, 
+        workStart: '09:00', 
+        workEnd: '18:00', 
+        breaks: [] as Array<{start: string, end: string}> 
+    });
 
     const { data: company } = useQuery({
         queryKey: ['my-company'],
@@ -173,12 +296,122 @@ export default function AppointmentsPage() {
             if (emp.visible_in_booking === false) return false;
             const hasAppointments = appointments.some((a: any) => a.employee_id === emp.id);
             if (hasAppointments) return true;
-            const shift = shifts.find((s: any) => s.employee_id === emp.id && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
-            return shift && (shift.shift_type === 'work' || (!shift.shift_type && !shift.is_day_off));
+            
+            const dayShifts = shifts.filter((s: any) => s.employee_id === emp.id && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+            const workShift = dayShifts.find((s: any) => s.shift_type === 'work' || (!s.shift_type && !s.is_day_off));
+            return !!workShift;
         });
     }, [employees, shifts, currentDate, appointments]);
 
     const [isSaving, setIsSaving] = useState(false);
+
+    const saveShiftMutation = useMutation({
+        mutationFn: (data: any[]) => api.post('/shifts', data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['shifts'] });
+            toast.success('Расписание обновлено');
+            setIsShiftDialogOpen(false);
+        },
+    });
+
+    const handleQuickShiftSave = () => {
+        const payload: any[] = [];
+        
+        // 1. Add main work shift
+        payload.push({
+            employee_id: quickShiftData.empID,
+            branch_id: Number(selectedBranchID),
+            date: currentDate.toISODate() + 'T00:00:00Z',
+            start_time: quickShiftData.workStart,
+            end_time: quickShiftData.workEnd,
+            shift_type: 'work',
+        });
+
+        // 2. Add all breaks
+        quickShiftData.breaks.forEach(b => {
+            if (b.start && b.end) {
+                payload.push({
+                    employee_id: quickShiftData.empID,
+                    branch_id: Number(selectedBranchID),
+                    date: currentDate.toISODate() + 'T00:00:00Z',
+                    start_time: b.start,
+                    end_time: b.end,
+                    shift_type: 'break',
+                });
+            }
+        });
+
+        saveShiftMutation.mutate(payload);
+    };
+
+    const handleShiftEdit = (empID: number) => {
+        const dayShifts = shifts.filter((s: any) => s.employee_id === empID && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+        const workShift = dayShifts.find((s: any) => s.shift_type === 'work' || !s.shift_type);
+        const breakShifts = dayShifts.filter((s: any) => s.shift_type === 'break');
+        
+        setQuickShiftData({
+            empID,
+            workStart: workShift?.start_time || '09:00',
+            workEnd: workShift?.end_time || '18:00',
+            breaks: breakShifts.map((b: any) => ({ start: b.start_time, end: b.end_time })),
+        });
+        setIsShiftDialogOpen(true);
+    };
+
+    const sensors = useSensors(
+        useSensor(MouseSensor, { activationConstraint: { distance: 10 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
+    );
+
+    const handleDragEnd = async (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over) return;
+
+        const app = active.data.current?.app;
+        const targetEmpID = over.data.current?.empID;
+
+        if (!app || !targetEmpID) return;
+
+        // Calculate new time based on drop position
+        // @ts-ignore
+        const dropY = event.delta.y; 
+        // This is tricky because dnd-kit gives delta. 
+        // We need to know the absolute position or use a different approach.
+        // For simplicity, let's assume we want to change ONLY the employee if dropped on a column,
+        // OR calculate time if we had more info.
+        
+        // BETTER APPROACH: Use the mouse position relative to the droppable container
+        // Since we don't have it easily in DragEndEvent, let's just support changing the employee for now,
+        // keeping the same time, OR we can add a more sophisticated listener.
+        
+        // Actually, we can get the client position from the original event
+        const { x, y } = event.delta;
+        const minutesDelta = Math.round((y / HOUR_HEIGHT) * 4) * 15;
+        
+        const oldStart = DateTime.fromISO(app.start_time).setZone(timezone);
+        const oldEnd = DateTime.fromISO(app.end_time).setZone(timezone);
+        const newStart = oldStart.plus({ minutes: minutesDelta });
+        const newEnd = oldEnd.plus({ minutes: minutesDelta });
+
+        try {
+            setIsSaving(true);
+            const payload = {
+                ...app,
+                employee_id: targetEmpID,
+                start_time: newStart.toISO(),
+                end_time: newEnd.toISO(),
+                company_id: company.id,
+                branch_id: Number(selectedBranchID)
+            };
+            await api.put(`/bookings/${app.id}`, payload);
+            queryClient.invalidateQueries({ queryKey: ['appointments'] });
+            toast.success('Запись перенесена');
+        } catch (e: any) {
+            toast.error(e.response?.data?.error || 'Ошибка при переносе');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleSaveBooking = async (data: any) => {
         setIsSaving(true);
@@ -219,7 +452,9 @@ export default function AppointmentsPage() {
     };
 
     const getEmployeeShiftRange = (empId: number) => {
-        const shift = shifts.find((s: any) => s.employee_id === empId && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+        const dayShifts = shifts.filter((s: any) => s.employee_id === empId && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+        const shift = dayShifts.find((s: any) => s.shift_type === 'work' || !s.shift_type);
+
         if (shift && shift.start_time && shift.end_time && shift.shift_type !== 'off' && !shift.is_day_off) {
             const [sH, sM] = shift.start_time.split(':').map(Number);
             const [eH, eM] = shift.end_time.split(':').map(Number);
@@ -252,6 +487,28 @@ export default function AppointmentsPage() {
         if (range.end < TIME_SLOTS_END) {
             blocks.push(<div key="bottom" className={`absolute left-0 right-0 z-10 pointer-events-none ${zebraStyle}`} style={{ top: `${(range.end - TIME_SLOTS_START) * HOUR_HEIGHT}px`, bottom: 0 }} />);
         }
+
+        // Add break shifts
+        const dayBreaks = shifts.filter((s: any) => s.employee_id === empId && s.shift_type === 'break' && DateTime.fromISO(s.date).hasSame(currentDate, 'day'));
+        dayBreaks.forEach((b: any, idx: number) => {
+            const [sH, sM] = b.start_time.split(':').map(Number);
+            const [eH, eM] = b.end_time.split(':').map(Number);
+            const start = sH + sM / 60;
+            const end = eH + eM / 60;
+            
+            blocks.push(
+                <div key={`break-${idx}`} 
+                     onClick={(e) => { e.stopPropagation(); handleShiftEdit(empId); }}
+                     className="absolute left-0 right-0 z-30 cursor-pointer bg-neutral-100 hover:bg-neutral-200/50 transition-colors flex items-center justify-center border-y border-neutral-200/50" 
+                     style={{ top: `${(start - TIME_SLOTS_START) * HOUR_HEIGHT}px`, height: `${(end - start) * HOUR_HEIGHT}px` }}>
+                    <div className="flex items-center gap-1.5 opacity-30 pointer-events-none">
+                        <Clock className="w-3 h-3" />
+                        <span className="text-[9px] font-black uppercase tracking-widest">Перерыв</span>
+                    </div>
+                </div>
+            );
+        });
+
         return blocks;
     };
 
@@ -274,86 +531,169 @@ export default function AppointmentsPage() {
             </header>
 
             <div className="flex-1 overflow-auto custom-scrollbar relative bg-white">
-                <div className="flex min-w-full" style={{ height: `${(TIME_SLOTS_END - TIME_SLOTS_START + 1) * HOUR_HEIGHT + 60}px` }}>
-                    <div className="w-20 shrink-0 border-r bg-neutral-50/50 sticky left-0 z-30 flex flex-col pt-12">
-                        {Array.from({ length: TIME_SLOTS_END - TIME_SLOTS_START + 1 }).map((_, i) => (
-                            <div key={i} className="h-20 border-b border-neutral-100 flex items-start justify-center pt-2"><span className="text-[10px] font-black text-neutral-400">{TIME_SLOTS_START + i}:00</span></div>
-                        ))}
-                    </div>
+                <DndContext sensors={sensors} onDragEnd={handleDragEnd} modifiers={[restrictToFirstScrollableAncestor]}>
+                    <div className="flex min-w-full" style={{ height: `${(TIME_SLOTS_END - TIME_SLOTS_START + 1) * HOUR_HEIGHT + 60}px` }}>
+                        <div className="w-20 shrink-0 border-r bg-neutral-50/50 sticky left-0 z-30 flex flex-col pt-12">
+                            {Array.from({ length: TIME_SLOTS_END - TIME_SLOTS_START + 1 }).map((_, i) => (
+                                <div key={i} className="h-20 border-b border-neutral-100 flex items-start justify-center pt-2"><span className="text-[10px] font-black text-neutral-400">{TIME_SLOTS_START + i}:00</span></div>
+                            ))}
+                        </div>
 
-                    <div className="flex-1 flex min-w-max">
-                        {visibleEmployees.map((emp: any) => (
-                            <div key={emp.id} className="min-w-[200px] border-r border-neutral-100 relative group flex flex-col flex-1">
-                                <div className="h-12 border-b bg-white/90 backdrop-blur-md flex items-center justify-center sticky top-0 z-20 px-4">
-                                    <div className="flex items-center gap-2">
-                                        <Avatar className="h-7 w-7 ring-2 ring-neutral-100 shadow-sm"><AvatarImage src={emp.avatar_url} /><AvatarFallback className="text-[10px] font-bold">{emp.name?.[0]}</AvatarFallback></Avatar>
-                                        <span className="text-[11px] font-black truncate text-neutral-800 uppercase tracking-tight">{emp.name}</span>
-                                    </div>
-                                </div>
-                                <div className="relative flex-1 bg-[linear-gradient(to_bottom,transparent_79px,#f5f5f5_79px,#f5f5f5_80px)] bg-[size:100%_80px]"
-                                     onClick={(e) => {
-                                         const rect = e.currentTarget.getBoundingClientRect();
-                                         const y = e.clientY - rect.top;
-                                         const hour = TIME_SLOTS_START + Math.floor(y / HOUR_HEIGHT);
-                                         const minute = Math.floor((y % HOUR_HEIGHT) / (HOUR_HEIGHT/4)) * 15;
-                                         
-                                         const clickTime = currentDate.set({ hour, minute, second: 0, millisecond: 0 });
-                                         const clickMillis = clickTime.toMillis();
-                                         
-                                         // Check if we clicked on an existing appointment to prevent "under-appointment" clicks
-                                         const existingApp = appointments.find((a: any) => {
-                                             if (a.employee_id !== emp.id || a.status === 'cancelled') return false;
-                                             const start = DateTime.fromISO(a.start_time).setZone(timezone).toMillis();
-                                             const end = DateTime.fromISO(a.end_time).setZone(timezone).toMillis();
-                                             return clickMillis >= start && clickMillis < end;
-                                         });
-
-                                         if (existingApp) return;
-
-                                         if (hour >= TIME_SLOTS_START && hour <= TIME_SLOTS_END) {
-                                             setSelectedSlot({ empID: emp.id, time: clickTime });
-                                             setEditorMode('create'); setSelectedAppointment(null); setIsEditorOpen(true);
-                                         }
-                                     }}>
-                                    
-                                    {renderNonWorkingHours(emp.id)}
-                                    <CurrentTimeMarker />
-
+                        <div className="flex-1 flex min-w-max">
+                            {visibleEmployees.map((emp: any) => (
+                                <DroppableColumn 
+                                    key={emp.id} 
+                                    emp={emp} 
+                                    onColumnClick={(e: any, empID: number) => {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const y = e.clientY - rect.top;
+                                        const hour = TIME_SLOTS_START + Math.floor(y / HOUR_HEIGHT);
+                                        const minute = Math.floor((y % HOUR_HEIGHT) / (HOUR_HEIGHT/4)) * 15;
+                                        const clickTime = currentDate.set({ hour, minute, second: 0, millisecond: 0 });
+                                        setSelectedSlot({ empID, time: clickTime });
+                                        setEditorMode('create'); setSelectedAppointment(null); setIsEditorOpen(true);
+                                    }}
+                                    renderNonWorkingHours={renderNonWorkingHours}
+                                    currentTimeMarker={<CurrentTimeMarker />}
+                                    onShiftEdit={handleShiftEdit}
+                                >
                                     {appointments.filter((a: any) => a.employee_id === emp.id).map((app: any) => (
-                                        <div key={app.id} onClick={(e) => { e.stopPropagation(); setSelectedAppointment(app); setEditorMode('edit'); setIsEditorOpen(true); }} style={getAppointmentStyle(app)} className={cn("absolute left-1.5 right-1.5 rounded-xl p-2.5 border-l-[6px] shadow-lg shadow-neutral-200/20 cursor-pointer transition-all hover:scale-[1.03] hover:z-20 group overflow-hidden", app.status === 'confirmed' ? "bg-emerald-50 border-emerald-500" : (app.status === 'arrived' || app.status === 'finished') ? "bg-blue-50 border-blue-500" : app.status === 'no_show' ? "bg-red-50 border-red-500" : "bg-amber-50 border-amber-500")}>
-                                            <div className="flex flex-col h-full relative">
-                                                {/* Source & New Badge icons */}
-                                                <div className="absolute top-0 right-0 flex items-center gap-1">
-                                                    {app.is_new_client && (
-                                                        <div className="bg-[#F5FF82] text-black px-1 rounded-[4px] flex items-center gap-0.5 animate-pulse">
-                                                            <Sparkles className="w-2 h-2" />
-                                                            <span className="text-[7px] font-black uppercase">New</span>
-                                                        </div>
-                                                    )}
-                                                    {app.booking_source === 'widget' ? (
-                                                        <Globe className="w-2.5 h-2.5 text-neutral-400" />
-                                                    ) : (
-                                                        <User className="w-2.5 h-2.5 text-neutral-400" />
-                                                    )}
-                                                </div>
-
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <span className="text-[10px] font-black text-neutral-900/40 uppercase tracking-tighter">{DateTime.fromISO(app.start_time.includes('T') ? app.start_time : app.start_time.replace(' ', 'T')).setZone(timezone).toFormat('HH:mm')}</span>
-                                                </div>
-                                                <div className="text-[11px] font-black text-neutral-900 leading-none truncate mb-1 pr-10">{app.client_first_name || 'Без имени'}</div>
-                                                <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-tighter truncate">{(app.services || []).map((s: any) => serviceMap[s.service_id] || 'Услуга').join(', ')}</div>
-                                                {app.comment && <div className="mt-1.5 text-[8px] italic text-neutral-400 truncate border-t border-black/5 pt-1">{app.comment}</div>}
-                                            </div>
-                                        </div>
+                                        <DraggableAppointment 
+                                            key={app.id} 
+                                            app={app} 
+                                            style={getAppointmentStyle(app)} 
+                                            serviceMap={serviceMap} 
+                                            timezone={timezone}
+                                            onClick={(e: any) => { e.stopPropagation(); setSelectedAppointment(app); setEditorMode('edit'); setIsEditorOpen(true); }}
+                                        />
                                     ))}
-                                </div>
-                            </div>
-                        ))}
+                                </DroppableColumn>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                </DndContext>
             </div>
 
             <BookingEditor isOpen={isEditorOpen} onClose={() => setIsEditorOpen(false)} mode={editorMode} company={company} branchId={Number(selectedBranchID)} selectedSlot={selectedSlot} selectedAppointment={selectedAppointment} employees={employees} allServices={allServices} employeeServices={employeeServices} categories={categories} customers={customers} appointments={appointments} shifts={shifts} onSave={handleSaveBooking} isSaving={isSaving} />
+
+            <Dialog open={isShiftDialogOpen} onOpenChange={setIsShiftDialogOpen}>
+                <DialogContent className="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Clock className="w-5 h-5" />
+                            Настройка графика
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-6 py-6">
+                        <div className="flex items-center gap-4">
+                            <Avatar className="h-10 w-10 ring-2 ring-neutral-100 shadow-sm">
+                                <AvatarImage src={employees.find((e: any) => e.id === quickShiftData.empID)?.avatar_url} />
+                                <AvatarFallback className="text-xs font-bold">{employees.find((e: any) => e.id === quickShiftData.empID)?.name?.[0]}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                                <p className="text-sm font-black text-neutral-900 uppercase tracking-tight">{employees.find((e: any) => e.id === quickShiftData.empID)?.name}</p>
+                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest">{currentDate.setLocale('ru').toFormat('d MMMM, cccc')}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="space-y-3">
+                                <Label className="text-[10px] font-black uppercase tracking-widest opacity-40">Рабочее время</Label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-neutral-400 uppercase">Начало</span>
+                                        <Input 
+                                            type="time" 
+                                            value={quickShiftData.workStart} 
+                                            onChange={(e) => setQuickShiftData({...quickShiftData, workStart: e.target.value})} 
+                                            className="h-10 text-sm font-bold bg-neutral-50 border-none rounded-xl"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-bold text-neutral-400 uppercase">Конец</span>
+                                        <Input 
+                                            type="time" 
+                                            value={quickShiftData.workEnd} 
+                                            onChange={(e) => setQuickShiftData({...quickShiftData, workEnd: e.target.value})} 
+                                            className="h-10 text-sm font-bold bg-neutral-50 border-none rounded-xl"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 pt-4 border-t border-neutral-100">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase tracking-widest opacity-40">Перерывы</Label>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        onClick={() => setQuickShiftData({
+                                            ...quickShiftData, 
+                                            breaks: [...quickShiftData.breaks, { start: '13:00', end: '14:00' }]
+                                        })}
+                                        className="h-6 text-[9px] font-black uppercase bg-neutral-100 rounded-lg hover:bg-neutral-200"
+                                    >
+                                        + Добавить
+                                    </Button>
+                                </div>
+                                
+                                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                                    {quickShiftData.breaks.map((b, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 group animate-in slide-in-from-left-2">
+                                            <div className="grid grid-cols-2 gap-2 flex-1">
+                                                <Input 
+                                                    type="time" 
+                                                    value={b.start} 
+                                                    onChange={(e) => {
+                                                        const newBreaks = [...quickShiftData.breaks];
+                                                        newBreaks[idx].start = e.target.value;
+                                                        setQuickShiftData({...quickShiftData, breaks: newBreaks});
+                                                    }}
+                                                    className="h-9 text-xs font-bold bg-neutral-50/50 border-none"
+                                                />
+                                                <Input 
+                                                    type="time" 
+                                                    value={b.end} 
+                                                    onChange={(e) => {
+                                                        const newBreaks = [...quickShiftData.breaks];
+                                                        newBreaks[idx].end = e.target.value;
+                                                        setQuickShiftData({...quickShiftData, breaks: newBreaks});
+                                                    }}
+                                                    className="h-9 text-xs font-bold bg-neutral-50/50 border-none"
+                                                />
+                                            </div>
+                                            <Button 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                onClick={() => {
+                                                    const newBreaks = quickShiftData.breaks.filter((_, i) => i !== idx);
+                                                    setQuickShiftData({...quickShiftData, breaks: newBreaks});
+                                                }}
+                                                className="h-8 w-8 text-neutral-300 hover:text-red-500 transition-colors"
+                                            >
+                                                <Badge variant="outline" className="p-0 border-none">×</Badge>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {quickShiftData.breaks.length === 0 && (
+                                        <p className="text-[10px] text-neutral-300 italic text-center py-2">Нет перерывов</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" onClick={() => setIsShiftDialogOpen(false)} className="rounded-xl font-bold uppercase text-[10px] tracking-widest">Отмена</Button>
+                        <Button 
+                            onClick={handleQuickShiftSave} 
+                            disabled={saveShiftMutation.isPending}
+                            className="bg-neutral-900 text-white hover:bg-neutral-800 rounded-xl font-bold uppercase text-[10px] tracking-widest px-8 shadow-lg shadow-neutral-200"
+                        >
+                            {saveShiftMutation.isPending ? 'Сохранение...' : 'Сохранить'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
