@@ -340,7 +340,8 @@ export function BookingEditor({
 
             if (shifts) {
                 const shiftDate = formData.bookingDate.toISODate();
-                const shift = shifts.find((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
+                const dayShifts = shifts.filter((s: any) => s.employee_id === master.id && s.date && s.date.startsWith(shiftDate));
+                const shift = dayShifts.find((s: any) => s.shift_type === 'work' || (!s.shift_type && !s.is_day_off));
 
                 let hasWorkingHours = false;
                 let shiftStartH = 0, shiftStartM = 0;
@@ -498,8 +499,28 @@ export function BookingEditor({
                                     </Popover>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <div className="flex-1 flex flex-col min-w-0"><Label className="text-[9px] font-black uppercase text-neutral-400 mb-2 pl-1">Приход</Label><div className="relative"><Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" /><Input value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="pl-9 h-11 font-black border-none bg-white rounded-2xl shadow-sm text-xs" /></div></div>
-                                    <div className="flex-1 flex flex-col min-w-0"><Label className="text-[9px] font-black uppercase text-neutral-400 mb-2 pl-1">Уход</Label><div className="relative"><Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-300" /><Input value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="pl-9 h-11 font-black border-none bg-white rounded-2xl shadow-sm text-xs" /></div></div>
+                                    <div className="flex-1 flex flex-col min-w-0">
+                                        <Label className="text-[9px] font-black uppercase text-neutral-400 mb-2 pl-1">Приход</Label>
+                                        <div className="relative">
+                                            <Input 
+                                                type="time"
+                                                value={formData.startTime} 
+                                                onChange={e => setFormData({...formData, startTime: e.target.value})} 
+                                                className="px-4 h-11 font-black border-none bg-white rounded-2xl shadow-sm text-sm appearance-none [&::-webkit-calendar-picker-indicator]:hidden" 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 flex flex-col min-w-0">
+                                        <Label className="text-[9px] font-black uppercase text-neutral-400 mb-2 pl-1">Уход</Label>
+                                        <div className="relative">
+                                            <Input 
+                                                type="time"
+                                                value={formData.endTime} 
+                                                onChange={e => setFormData({...formData, endTime: e.target.value})} 
+                                                className="px-4 h-11 font-black border-none bg-white rounded-2xl shadow-sm text-sm appearance-none [&::-webkit-calendar-picker-indicator]:hidden" 
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

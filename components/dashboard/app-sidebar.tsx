@@ -13,7 +13,8 @@ import {
     ChevronRight,
     PieChart,
     MousePointerClick,
-    TrendingUp
+    TrendingUp,
+    Wallet
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -58,6 +59,11 @@ const navItems = [
         title: 'График работы',
         url: '/dashboard/schedule',
         icon: Calendar,
+    },
+    {
+        title: 'Зарплата',
+        url: '/dashboard/payroll',
+        icon: Wallet,
     },
 ];
 

@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 // DnD Kit
 import { 
@@ -519,7 +521,22 @@ export default function AppointmentsPage() {
                     <h1 className="text-lg font-black tracking-tighter uppercase text-neutral-900">Журнал</h1>
                     <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200/50">
                         <Button variant="ghost" size="icon" onClick={() => setCurrentDate(currentDate.minus({ days: 1 }))} className="h-8 w-8 rounded-lg hover:bg-white hover:shadow-sm"><ChevronLeft className="h-4 w-4" /></Button>
-                        <div className="px-4 text-[11px] font-black uppercase tracking-[0.1em] text-neutral-600 min-w-[180px] text-center">{currentDate.setLocale('ru').toFormat('d MMMM, cccc')}</div>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" className="px-4 text-[11px] font-black uppercase tracking-[0.1em] text-neutral-600 min-w-[180px] text-center hover:bg-white rounded-lg">
+                                    {currentDate.setLocale('ru').toFormat('d MMMM, cccc')}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0 rounded-2xl border-none shadow-2xl" align="center">
+                                <Calendar
+                                    mode="single"
+                                    selected={currentDate.toJSDate()}
+                                    onSelect={(date) => date && setCurrentDate(DateTime.fromJSDate(date).setZone(timezone))}
+                                    initialFocus
+                                    className="p-4"
+                                />
+                            </PopoverContent>
+                        </Popover>
                         <Button variant="ghost" size="icon" onClick={() => setCurrentDate(currentDate.plus({ days: 1 }))} className="h-8 w-8 rounded-lg hover:bg-white hover:shadow-sm"><ChevronRight className="h-4 w-4" /></Button>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => setCurrentDate(DateTime.now().setZone(timezone))} className="h-10 rounded-xl font-bold border-neutral-200 hover:bg-neutral-50 shadow-sm">Сегодня</Button>

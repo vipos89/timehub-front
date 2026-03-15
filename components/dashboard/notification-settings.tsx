@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
     Bell, Send, MessageSquare, Plus, Trash2, Check, AlertCircle, 
-    Smartphone, Zap, Clock, ShieldCheck, Settings2, AtSign, UserSquare2
+    Smartphone, Zap, Clock, ShieldCheck, Settings2, AtSign, UserSquare2,
+    Eye, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -19,10 +20,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Input } from '@/components/ui/input';
 
 const AVAILABLE_CHANNELS = [
-    { id: 'telegram', label: 'Telegram', icon: Send, active: true },
-    { id: 'sms', label: 'SMS', icon: MessageSquare, active: true },
-    { id: 'email', label: 'Email', icon: AtSign, active: true },
-    { id: 'vk', label: 'ВКонтакте', icon: UserSquare2, active: true },
+    { id: 'telegram', label: 'Telegram', icon: Send },
+    { id: 'sms', label: 'SMS', icon: MessageSquare },
+    { id: 'email', label: 'Email', icon: AtSign },
+    { id: 'vk', label: 'ВКонтакте', icon: UserSquare2 },
 ];
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -44,21 +45,18 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     const [localBranchId, setLocalBranchId] = useState<string>(selectedBranchID || branches[0]?.id?.toString() || '');
     const [editingRule, setEditingRule] = useState<any | null>(null);
     const [editingTemplateIdx, setEditingTemplateIdx] = useState<number | null>(null);
-    const [activeChannels, setActiveChannels] = useState<string[]>(['telegram', 'sms']); // Mock active channels
+    const [localConfig, setLocalConfig] = useState<any>(null);
 
     const VARIABLES = [
         { name: '{{client_name}}', desc: 'Имя клиента' },
         { name: '{{branch_name}}', desc: 'Название филиала' },
-        { name: '{{branch_address}}', desc: 'Адрес филиала' },
         { name: '{{employee_name}}', desc: 'Имя мастера' },
-        { name: '{{start_time}}', desc: 'Дата и время (15:00 02.01)' },
         { name: '{{date}}', desc: 'Дата (02.01.2026)' },
         { name: '{{time}}', desc: 'Время (15:00)' },
         { name: '{{services}}', desc: 'Список услуг' },
         { name: '{{appointment_url}}', desc: 'Ссылка на детали записи' },
         { name: '{{review_url}}', desc: 'Ссылка на отзыв' },
     ];
-
 
     useEffect(() => {
         if (selectedBranchID) setLocalBranchId(selectedBranchID);
@@ -70,6 +68,16 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     };
 
     // -- Queries --
+    const { data: config } = useQuery({
+        queryKey: ['notification-config', localBranchId],
+        queryFn: async () => (await api.get(`/notifications/config/${localBranchId}`)).data,
+        enabled: !!localBranchId
+    });
+
+    useEffect(() => {
+        if (config) setLocalConfig(config);
+    }, [config]);
+
     const { data: rules = [], isLoading: isLoadingRules } = useQuery({
         queryKey: ['notification-rules', localBranchId],
         queryFn: async () => (await api.get(`/notifications/rules/${localBranchId}`)).data || [],
@@ -77,6 +85,14 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     });
 
     // -- Mutations --
+    const saveConfigMutation = useMutation({
+        mutationFn: (newConfig: any) => api.post(`/notifications/config/${localBranchId}`, newConfig),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['notification-config', localBranchId] });
+            toast.success('Настройки каналов сохранены');
+        }
+    });
+
     const toggleRuleMutation = useMutation({
         mutationFn: (rule: any) => api.post(`/notifications/rules`, { ...rule, is_active: !rule.is_active }),
         onSuccess: () => {
@@ -110,10 +126,6 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
 
     if (!localBranchId) return <div className="p-12 text-center bg-white rounded-[2rem] border border-neutral-100 shadow-sm"><p className="text-neutral-500 font-bold uppercase text-xs tracking-widest">Сначала выберите или создайте филиал</p></div>;
 
-    const toggleChannel = (id: string) => {
-        setActiveChannels(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
-    };
-
     const handleEditRule = (typeId: string) => {
         const existingRule = rules.find((r: any) => r.type === typeId);
         if (existingRule) {
@@ -126,12 +138,12 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                 is_active: true,
                 steps: [
                     { 
-                        channel: activeChannels[0] || 'telegram', 
+                        channel: 'telegram', 
                         condition: 'always', 
                         delay_minutes: 0, 
                         template: {
                             branch_id: parseInt(localBranchId),
-                            name: `${label} - Step 1`,
+                            name: `${label} - Шаг 1`,
                             body: DEFAULT_TEMPLATES[typeId] || DEFAULT_TEMPLATES.booking_created
                         }
                     }
@@ -151,12 +163,12 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
             steps: [
                 ...(editingRule.steps || []),
                 { 
-                    channel: activeChannels[0] || 'telegram', 
+                    channel: 'telegram', 
                     condition: 'on_failure', 
                     delay_minutes: 0, 
                     template: {
                         branch_id: parseInt(localBranchId),
-                        name: `${label} - Step ${nextIdx}`,
+                        name: `${label} - Шаг ${nextIdx}`,
                         body: DEFAULT_TEMPLATES[typeId] || DEFAULT_TEMPLATES.booking_created
                     }
                 }
@@ -180,60 +192,118 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
-            {/* Header & Channels */}
+        <div className="space-y-8 animate-in fade-in duration-500 pb-20">
+            {/* Config Section */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="col-span-1 lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-neutral-100 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div className="flex items-center gap-4 mb-2">
+                <div className="col-span-1 lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-neutral-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-4">
                             <div className="h-12 w-12 rounded-2xl bg-neutral-900 flex items-center justify-center text-white shadow-lg shadow-black/10">
                                 <Zap className="h-6 w-6" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-black uppercase tracking-tight text-neutral-900 italic">Активные каналы</h3>
-                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">Включите каналы для отправки уведомлений</p>
+                                <h3 className="text-xl font-black uppercase tracking-tight text-neutral-900 italic">Каналы связи</h3>
+                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">Настройте токены и ключи провайдеров</p>
                             </div>
                         </div>
+                        <Button 
+                            onClick={() => saveConfigMutation.mutate(localConfig)}
+                            disabled={saveConfigMutation.isPending || !localConfig}
+                            className="bg-neutral-900 text-white hover:bg-black rounded-xl font-black uppercase text-[10px] tracking-widest h-10 px-6 transition-all"
+                        >
+                            <Save className="h-3.5 w-3.5 mr-2" />
+                            {saveConfigMutation.isPending ? '...' : 'Сохранить'}
+                        </Button>
                     </div>
-                    <div className="flex flex-wrap gap-3 mt-6">
-                        {AVAILABLE_CHANNELS.map(ch => (
-                            <button
-                                key={ch.id}
-                                onClick={() => toggleChannel(ch.id)}
-                                className={cn(
-                                    "flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-black uppercase tracking-widest transition-all",
-                                    activeChannels.includes(ch.id) 
-                                        ? "bg-neutral-900 border-neutral-900 text-[#F5FF82] shadow-lg shadow-black/10" 
-                                        : "bg-white border-neutral-200 text-neutral-400 hover:border-neutral-300"
-                                )}
-                            >
-                                <ch.icon className="h-4 w-4" />
-                                {ch.label}
-                            </button>
-                        ))}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Send className="h-3.5 w-3.5 text-neutral-400" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-900">Telegram Bot Token</span>
+                                </div>
+                                {!localConfig?.telegram_token && <Badge variant="outline" className="text-[7px] border-amber-200 text-amber-600 bg-amber-50">Не настроено</Badge>}
+                            </div>
+                            <Input 
+                                value={localConfig?.telegram_token || ''} 
+                                onChange={(e) => setLocalConfig({...localConfig, telegram_token: e.target.value})}
+                                placeholder="0000000000:AA..."
+                                className="h-11 rounded-xl bg-neutral-50 border-none font-bold text-xs"
+                            />
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <MessageSquare className="h-3.5 w-3.5 text-neutral-400" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-900">SMS API (RocketSMS)</span>
+                                </div>
+                                {!localConfig?.sms_api_key && <Badge variant="outline" className="text-[7px] border-amber-200 text-amber-600 bg-amber-50">Не настроено</Badge>}
+                            </div>
+                            <Input 
+                                value={localConfig?.sms_api_key || ''} 
+                                onChange={(e) => setLocalConfig({...localConfig, sms_api_key: e.target.value})}
+                                placeholder="username:password"
+                                className="h-11 rounded-xl bg-neutral-50 border-none font-bold text-xs"
+                            />
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <UserSquare2 className="h-3.5 w-3.5 text-neutral-400" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-900">VK Access Token</span>
+                                </div>
+                            </div>
+                            <Input 
+                                value={localConfig?.vk_token || ''} 
+                                onChange={(e) => setLocalConfig({...localConfig, vk_token: e.target.value})}
+                                placeholder="vk1.a.xxxx..."
+                                className="h-11 rounded-xl bg-neutral-50 border-none font-bold text-xs"
+                            />
+                        </div>
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <ShieldCheck className="h-3.5 w-3.5 text-neutral-400" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-900">Telegram Chat ID</span>
+                            </div>
+                            <Input 
+                                value={localConfig?.telegram_chat_id || ''} 
+                                onChange={(e) => setLocalConfig({...localConfig, telegram_chat_id: e.target.value})}
+                                placeholder="325845638"
+                                className="h-11 rounded-xl bg-neutral-50 border-none font-bold text-xs"
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div className="bg-white p-8 rounded-[2.5rem] border border-neutral-100 shadow-sm">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="h-12 w-12 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 border border-neutral-100">
-                            <Settings2 className="h-6 w-6" />
+                <div className="bg-white p-8 rounded-[2.5rem] border border-neutral-100 shadow-sm flex flex-col justify-between">
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-4">
+                            <div className="h-12 w-12 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 border border-neutral-100">
+                                <Settings2 className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black uppercase tracking-tight text-neutral-900">Филиал</h3>
+                                <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">Активный контекст</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-sm font-black uppercase tracking-tight text-neutral-900">Филиал</h3>
-                            <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest mt-0.5">Настройки для точки</p>
+                        <Select value={localBranchId} onValueChange={handleBranchChange}>
+                            <SelectTrigger className="w-full h-12 rounded-2xl border-neutral-200 font-bold bg-neutral-50/50">
+                                <SelectValue placeholder="Выберите филиал" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {branches.map(b => (
+                                    <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="pt-6 border-t border-neutral-50 mt-auto">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-neutral-400 uppercase">
+                            <span>Всего сценариев</span>
+                            <span className="text-neutral-900 font-black">{rules.length} / {notificationTypes.length}</span>
                         </div>
                     </div>
-                    <Select value={localBranchId} onValueChange={handleBranchChange}>
-                        <SelectTrigger className="w-full h-12 rounded-2xl border-neutral-200 font-bold bg-neutral-50/50">
-                            <SelectValue placeholder="Выберите филиал" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {branches.map(b => (
-                                <SelectItem key={b.id} value={b.id.toString()}>{b.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
                 </div>
             </div>
 
@@ -254,7 +324,7 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                             checked={rule?.is_active || false} 
                                             onCheckedChange={() => {
                                                 if (rule) toggleRuleMutation.mutate(rule);
-                                                else handleEditRule(type.id); // If doesn't exist, open editor to create
+                                                else handleEditRule(type.id);
                                             }}
                                             className="data-[state=checked]:bg-neutral-900" 
                                         />
@@ -278,7 +348,7 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                         <Button 
                                             variant="ghost" 
                                             onClick={() => handleEditRule(type.id)}
-                                            className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-neutral-50 text-neutral-600 hover:bg-neutral-900 hover:text-[#FF7A00] transition-all opacity-0 group-hover:opacity-100"
+                                            className="h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest bg-neutral-50 text-neutral-600 hover:bg-neutral-900 hover:text-[#F5FF82] transition-all opacity-0 group-hover:opacity-100"
                                         >
                                             Настроить
                                         </Button>
@@ -331,12 +401,9 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    {AVAILABLE_CHANNELS.filter(c => activeChannels.includes(c.id)).map(ch => (
+                                                    {AVAILABLE_CHANNELS.map(ch => (
                                                         <SelectItem key={ch.id} value={ch.id}>{ch.label}</SelectItem>
                                                     ))}
-                                                    {activeChannels.length === 0 && (
-                                                        <SelectItem value="none" disabled>Нет активных каналов</SelectItem>
-                                                    )}
                                                 </SelectContent>
                                             </Select>
                                         </div>
@@ -391,11 +458,6 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
                                     </div>
                                 </div>
                             ))}
-                            {editingRule?.steps?.length === 0 && (
-                                <div className="text-center py-10 border-2 border-dashed border-neutral-100 rounded-[1.5rem]">
-                                    <p className="text-xs font-bold text-neutral-400">Нет шагов для отправки</p>
-                                </div>
-                            )}
                         </div>
                     </div>
 
@@ -415,68 +477,109 @@ export function NotificationSettings({ companyId, branches }: { companyId: numbe
 
             {/* Template Editor Modal */}
             <Dialog open={editingTemplateIdx !== null} onOpenChange={(open) => !open && setEditingTemplateIdx(null)}>
-                <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden bg-white rounded-[2rem] border-none shadow-2xl">
-                    <div className="p-8 border-b border-neutral-100 bg-neutral-900 text-white">
+                <DialogContent className="sm:max-w-[1000px] w-[90vw] p-0 overflow-hidden bg-white rounded-[2rem] border-none shadow-2xl flex flex-col h-[80vh]">
+                    <div className="p-8 border-b border-neutral-100 bg-neutral-900 text-white shrink-0">
                         <DialogTitle className="text-2xl font-black uppercase tracking-tight italic">
                             Шаблон сообщения
                         </DialogTitle>
                         <DialogDescription className="text-neutral-400 font-bold text-xs mt-2">
-                            Настройте текст уведомления для канала {editingTemplateIdx !== null && editingRule?.steps[editingTemplateIdx]?.channel}
+                            Настройте текст для канала {editingTemplateIdx !== null && editingRule?.steps[editingTemplateIdx]?.channel}
                         </DialogDescription>
                     </div>
 
-                    <div className="p-8 space-y-6">
-                        <div className="space-y-4">
-                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Текст сообщения</label>
-                            <textarea
-                                className="w-full min-h-[150px] p-6 rounded-2xl bg-neutral-50 border-none text-sm font-medium focus:ring-1 focus:ring-neutral-200 resize-none"
-                                value={editingTemplateIdx !== null ? (editingRule?.steps[editingTemplateIdx]?.template?.body || '') : ''}
-                                onChange={(e) => {
-                                    const newSteps = [...editingRule.steps];
-                                    if (!newSteps[editingTemplateIdx!].template) {
-                                        newSteps[editingTemplateIdx!].template = { 
-                                            body: '', 
-                                            branch_id: editingRule.branch_id,
-                                            name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
-                                        };
-                                    }
-                                    newSteps[editingTemplateIdx!].template.body = e.target.value;
-                                    setEditingRule({ ...editingRule, steps: newSteps });
-                                }}
-                                placeholder="Введите текст сообщения..."
-                            />
+                    <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2">
+                        <div className="p-8 space-y-6 border-r border-neutral-100 flex flex-col">
+                            <div className="flex-1 space-y-4 flex flex-col">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Текст сообщения</label>
+                                <textarea
+                                    className="flex-1 w-full p-6 rounded-2xl bg-neutral-50 border-none text-sm font-medium focus:ring-1 focus:ring-neutral-200 resize-none"
+                                    value={editingTemplateIdx !== null ? (editingRule?.steps[editingTemplateIdx]?.template?.body || '') : ''}
+                                    onChange={(e) => {
+                                        const newSteps = [...editingRule.steps];
+                                        if (!newSteps[editingTemplateIdx!].template) {
+                                            newSteps[editingTemplateIdx!].template = { 
+                                                body: '', 
+                                                branch_id: editingRule.branch_id,
+                                                name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
+                                            };
+                                        }
+                                        newSteps[editingTemplateIdx!].template.body = e.target.value;
+                                        setEditingRule({ ...editingRule, steps: newSteps });
+                                    }}
+                                    placeholder="Введите текст сообщения..."
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Доступные переменные</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {VARIABLES.map(v => (
+                                        <button
+                                            key={v.name}
+                                            onClick={() => {
+                                                const newSteps = [...editingRule.steps];
+                                                const currentBody = newSteps[editingTemplateIdx!].template?.body || '';
+                                                if (!newSteps[editingTemplateIdx!].template) {
+                                                    newSteps[editingTemplateIdx!].template = { 
+                                                        body: '', 
+                                                        branch_id: editingRule.branch_id,
+                                                        name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
+                                                    };
+                                                }
+                                                newSteps[editingTemplateIdx!].template.body = currentBody + v.name;
+                                                setEditingRule({ ...editingRule, steps: newSteps });
+                                            }}
+                                            className="text-left p-2 px-3 rounded-lg bg-neutral-50 border border-neutral-100 hover:border-neutral-900 transition-colors group"
+                                        >
+                                            <div className="text-[10px] font-black text-neutral-900 group-hover:text-black">{v.name}</div>
+                                            <div className="text-[8px] font-bold text-neutral-400 uppercase tracking-tighter">{v.desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="space-y-4">
-                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">Доступные переменные</label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {VARIABLES.map(v => (
-                                    <button
-                                        key={v.name}
-                                        onClick={() => {
-                                            const newSteps = [...editingRule.steps];
-                                            const currentBody = newSteps[editingTemplateIdx!].template?.body || '';
-                                            if (!newSteps[editingTemplateIdx!].template) {
-                                                newSteps[editingTemplateIdx!].template = { 
-                                                    body: '', 
-                                                    branch_id: editingRule.branch_id,
-                                                    name: `${notificationTypes.find(t => t.id === editingRule.type)?.label} - ${newSteps[editingTemplateIdx!].channel}`
-                                                };
-                                            }
-                                            newSteps[editingTemplateIdx!].template.body = currentBody + v.name;
-                                            setEditingRule({ ...editingRule, steps: newSteps });
-                                        }}
-                                        className="text-left p-2 px-3 rounded-lg bg-neutral-50 border border-neutral-100 hover:border-neutral-900 transition-colors group"
-                                    >
-                                        <div className="text-[10px] font-black text-neutral-900 group-hover:text-black">{v.name}</div>
-                                        <div className="text-[8px] font-bold text-neutral-400 uppercase tracking-tighter">{v.desc}</div>
-                                    </button>
-                                ))}
+                        <div className="p-8 bg-neutral-50/50 flex flex-col">
+                            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400 mb-6">Предпросмотр (Telegram)</label>
+                            
+                            <div className="flex-1 flex items-center justify-center">
+                                <div className="w-full max-w-[300px] bg-white rounded-2xl shadow-xl border border-neutral-100 overflow-hidden">
+                                    <div className="bg-neutral-900 p-3 flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-[#F5FF82] flex items-center justify-center text-black font-black text-[10px]">TH</div>
+                                        <div>
+                                            <div className="text-white text-[10px] font-black leading-none uppercase">TimeHub Bot</div>
+                                            <div className="text-[#F5FF82] text-[8px] font-bold uppercase tracking-widest mt-1">bot</div>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-[#E7EBF3]">
+                                        <div className="bg-white p-3 rounded-xl rounded-tl-none shadow-sm text-xs font-medium text-neutral-800 leading-relaxed relative whitespace-pre-wrap">
+                                            {(() => {
+                                                let body = editingTemplateIdx !== null ? (editingRule?.steps[editingTemplateIdx]?.template?.body || '') : '';
+                                                VARIABLES.forEach(v => {
+                                                    const valMap: Record<string, string> = {
+                                                        '{{client_name}}': 'Иван',
+                                                        '{{branch_name}}': 'TimeHub Demo',
+                                                        '{{branch_address}}': 'ул. Мира, 15',
+                                                        '{{employee_name}}': 'Мастер Юля',
+                                                        '{{date}}': '14.03.2026',
+                                                        '{{time}}': '15:00',
+                                                        '{{services}}': 'Мужская стрижка',
+                                                        '{{appointment_url}}': 'https://timehub.by/b/123',
+                                                        '{{review_url}}': 'https://timehub.by/r/123',
+                                                    };
+                                                    body = body.replaceAll(v.name, valMap[v.name] || v.name);
+                                                });
+                                                return body || 'Текст сообщения появится здесь...';
+                                            })()}
+                                            <div className="text-[8px] text-neutral-400 mt-2 text-right">15:52</div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <DialogFooter className="p-6 bg-neutral-50 border-t border-neutral-100">
+                    <DialogFooter className="p-6 bg-neutral-50 border-t border-neutral-100 shrink-0">
                         <Button 
                             onClick={() => setEditingTemplateIdx(null)} 
                             className="h-12 w-full rounded-xl bg-neutral-900 text-white hover:bg-black font-bold shadow-xl shadow-black/10"
